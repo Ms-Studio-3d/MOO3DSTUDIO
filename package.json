@@ -1,6 +1,6 @@
 {
   "name": "moo3dstudio",
-  "version": "1.8.11",
+  "version": "0.0.1",
   "description": "MOO3DSTUDIO desktop app for 3D printing pricing, orders, inventory, and local data management",
   "main": "main.js",
   "author": "Ms-Studio-3d",
@@ -36,7 +36,8 @@
     "appId": "com.msstudio3d.moo3dstudio",
     "productName": "MOO3DSTUDIO",
     "asar": true,
-    "artifactName": "${productName}-${version}-${target}.${ext}",
+    "buildVersion": "0.0.0.1",
+    "artifactName": "${productName}-${buildVersion}-${target}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -86,7 +87,7 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "artifactName": "${productName}-Setup-${buildVersion}.${ext}",
       "shortcutName": "MOO3DSTUDIO",
       "uninstallDisplayName": "MOO3DSTUDIO",
       "createDesktopShortcut": true,
@@ -95,7 +96,7 @@
       "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "${productName}-Portable-${version}.${ext}"
+      "artifactName": "${productName}-Portable-${buildVersion}.${ext}"
     },
     "publish": null,
     "asarUnpack": [
