@@ -30,6 +30,7 @@ async function saveSettings() {
     return;
   }
 
+  closeSettingsModal();
   showToast('تم حفظ الإعدادات بنجاح');
   await loadDashboardData();
 }
