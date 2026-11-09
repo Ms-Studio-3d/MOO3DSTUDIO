@@ -38,6 +38,8 @@ function bindPaymentInputs() {}
 
 function bindGlobalKeyboardShortcuts() {
   document.addEventListener('keydown', (event) => {
+    if ($('saleConfirmDialog')?.open) return;
+
     if (event.key === 'Escape') {
       if (typeof freshStartRunning !== 'undefined' && freshStartRunning) return;
       closeAllModals();

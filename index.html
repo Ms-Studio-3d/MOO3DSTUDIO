@@ -1047,6 +1047,17 @@
     </div>
   </div>
 
+  <dialog id="saleConfirmDialog" class="sale-confirm-dialog" aria-labelledby="saleConfirmTitle" aria-describedby="saleConfirmDescription">
+    <form method="dialog">
+      <h2 id="saleConfirmTitle">هل تم استلام المبلغ كاملًا؟</h2>
+      <p id="saleConfirmDescription">بعد التأكيد، هيتسجل الأوردر وهتتخصم الخامات من المخزون.</p>
+      <div class="inline-actions sale-confirm-actions">
+        <button class="btn btn-secondary" type="submit" value="cancel" autofocus>إلغاء</button>
+        <button class="btn btn-primary" type="submit" value="confirm">تسجيل الأوردر</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="js/state.js"></script>
 <script src="js/utils.js"></script>
 <script src="js/pricing-core.js"></script>

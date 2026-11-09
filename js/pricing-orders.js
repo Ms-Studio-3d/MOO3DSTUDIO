@@ -343,7 +343,7 @@ async function saveSale() {
     const validation = validateOrderBeforeSave();
     if (!validation.valid) return;
 
-    if (!await askConfirm('هل تم استلام المبلغ كاملًا؟ سيتم تسجيل الأوردر وخصم المخزون')) return;
+    if (!await confirmPaidSale()) return;
 
     const responseCode = await window.farmAPI.getNextOrderCode();
     if (!responseCode?.success) {
@@ -374,6 +374,15 @@ async function saveSale() {
   } finally {
     savingOrder = false;
   }
+}
+
+function confirmPaidSale() {
+  const dialog = $('saleConfirmDialog');
+  dialog.returnValue = 'cancel';
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+  });
 }
 
 function applySavedOrderLocally(payload) {

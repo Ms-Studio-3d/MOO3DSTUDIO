@@ -48,7 +48,25 @@ try:
   page.locator('#printHours').blur()
   page.wait_for_timeout(300)
   saved_price=page.evaluate('currentCalc.finalPrice')
-  page.locator('button[onclick="saveSale()"]').click()
+  save_button=page.locator('button[onclick="saveSale()"]')
+  sale_confirm=page.locator('#saleConfirmDialog')
+  for dismissal in ('click', 'Escape', 'Enter'):
+   save_button.click()
+   sale_confirm.wait_for(state='visible')
+   cancel=sale_confirm.get_by_role('button', name='إلغاء')
+   assert cancel.evaluate('(button) => button === document.activeElement')
+   if dismissal=='click':
+    cancel.click()
+   else:
+    page.keyboard.press(dismissal)
+   sale_confirm.wait_for(state='hidden')
+   page.wait_for_function('savingOrder === false')
+   assert page.evaluate('dashboardData.orders.length')==0
+   assert page.evaluate('dashboardData.materials.every(m => m.remaining === 1000)')
+   assert page.locator('#itemName').input_value()=='مجسم اختبار الواجهة'
+  passed('Cancel, Escape and Enter on the default button preserve the order draft and stock')
+  save_button.click()
+  sale_confirm.get_by_role('button', name='تسجيل الأوردر', exact=True).click()
   page.wait_for_function('dashboardData.orders.length === 1')
   page.wait_for_function('savingOrder === false')
   assert page.evaluate('(dashboardData.materials.find(m => String(m.id) === '+json.dumps(mid)+')).remaining')==900
