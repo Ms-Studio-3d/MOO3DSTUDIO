@@ -603,6 +603,16 @@ input[readonly] {
   align-items: end;
 }
 
+#pipelinePrinterFilter,
+#filterPrinter {
+  height: 44px;
+  padding-block: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: start;
+}
+
 /* Tables */
 .table-wrap {
   background: #0d1117;
@@ -1392,7 +1402,7 @@ textarea {
    ========================================================= */
 @media (min-width: 1181px) {
   :root {
-    --side-nav-width: 76px;
+    --side-nav-width: 100px;
     --topbar-height: 72px;
     --workspace-gap: 14px;
     --summary-width: 390px;
@@ -2350,7 +2360,6 @@ button[onclick="saveQuote()"] {
 
 @media (min-width: 1181px) {
   :root {
-    --side-nav-width: 76px;
     --topbar-height: 72px;
     --workspace-gap: 12px;
     --summary-width: 380px;
@@ -2389,17 +2398,18 @@ button[onclick="saveQuote()"] {
     border: 1px solid var(--border-strong) !important;
     border-radius: 18px !important;
     z-index: 1200 !important;
-    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
   }
 
   .nav-btn {
     min-width: 0 !important;
     width: 100% !important;
-    min-height: 48px !important;
+    min-height: 50px !important;
     padding: 5px 4px !important;
     flex-direction: column !important;
     gap: 3px !important;
-    font-size: 10.5px !important;
+    font-size: 12px !important;
     line-height: 1.15 !important;
     border-radius: 13px !important;
     white-space: normal !important;
@@ -2427,7 +2437,7 @@ button[onclick="saveQuote()"] {
   .quote-inputs-column {
     grid-column: 2 !important;
     display: grid !important;
-    grid-template-columns: minmax(370px, .92fr) minmax(470px, 1.08fr) !important;
+    grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr) !important;
     grid-template-rows: auto minmax(0, 1fr) !important;
     gap: var(--workspace-gap) !important;
     overflow: hidden !important;
@@ -2651,10 +2661,6 @@ button[onclick="saveQuote()"] {
     display: none !important;
   }
 
-  .quote-inputs-column {
-    grid-template-columns: minmax(350px, .9fr) minmax(450px, 1.1fr) !important;
-  }
-
   .summary-redesign .summary-label,
   .result-card .summary-label {
     font-size: 9.8px !important;
@@ -2704,10 +2710,8 @@ button[onclick="saveQuote()"] {
 .bottom-nav .nav-btn span {
   display: block !important;
   width: 100% !important;
-  line-height: 1.15 !important;
+  line-height: 1.35 !important;
   white-space: normal !important;
-  overflow: hidden !important;
-  text-overflow: clip !important;
 }
 
 /* Desktop invoice/summary layout */
