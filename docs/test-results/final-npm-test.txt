@@ -1,0 +1,56 @@
+
+> printing-business-manager@1.8.11 test
+> node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js
+
+Pricing tests passed using js/pricing-core.js
+Syntax checks passed for 26 JavaScript files
+Database export checks passed for 28 exports
+Database validation tests passed
+Inventory tests passed
+Performance tests passed
+UI tests passed
+(node:2859) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2859) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Integration tests passed with temporary database, pagination, filters, totals, inventory, edits, deletes, and background backup
+Concurrent load tests passed
+(node:2878) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS 1: preload → main → SQLite sale consumes 100g exactly once
+PASS 2: explicit false preserves material usage through every IPC layer
+PASS 3: sale totals are persisted and returned in fresh dashboard summary
+PASS 4: delete returns 100g and removes sale
+PASS 5: repeated delete cannot credit stock twice
+PASS 6: backup validator accepts returned-stock movements
+PASS 7: deleted sale code is not automatically reused
+PASS 8: purchase createMaterial flag reaches SQLite and creates stock
+PASS 9: restock above pack size preserves price/gram and restores successfully
+PASS 10: truncated backup cannot wipe valid data
+PASS 11: unknown future backup schema is refused
+PASS 12: invalid numeric values and broken references are refused
+PASS 13: typed reset phrase and strict boolean options are required
+PASS 14: native reset cancellation leaves every record untouched
+PASS 15: other IPC writes are gated while reset confirmation is open
+PASS 16: failed safety backup blocks reset before any DELETE
+PASS 17: failed safety backup blocks import before replacing data
+PASS 18: reset transaction rolls back on SQL error
+PASS 19: default reset clears trading data but keeps pricing, printers and assets
+PASS 20: preserve total operating hours despite removing historical sales
+PASS 21: protected snapshot is complete and exactly matches pre-reset data
+PASS 22: reopening DB does not repopulate intentionally empty materials
+(node:2878) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS 23: automatic worker reads empty database without adding samples
+PASS 24: protected pre-reset backup round-trips through actual import IPC
+PASS 25: opt-in full reset removes assets/printers, hours and restarts code numbers
+PASS 26: full-reset empty tables remain empty across reopening and import
+PASS 27: new real material can be entered after reset with multiple-pack stock
+(node:2878) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS 28: automatic rotation keeps protected backups
+PASS 29: archived original printer does not block editing historic sale metadata
+PASS 30: restored quotes point to the correct remapped material and printer IDs
+
+30 stability scenarios passed through actual preload/main/SQLite, with native OS dialogs mocked.
+Original pricing engine and calculation helpers match uploaded source byte-for-byte (SHA-256); package manifest checks passed.

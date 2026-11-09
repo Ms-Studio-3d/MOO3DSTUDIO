@@ -1,0 +1,71 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const { createRequire } = require('node:module');
+const root = path.join(__dirname, '../..');
+const database = require('../../database');
+
+/** Real preload + real main handlers + real SQLite. Only Electron OS dialogs/lifecycle are mocked. */
+function createAppHarness(directory) {
+  fs.mkdirSync(directory, { recursive: true });
+  const dbPath = path.join(directory, 'app.db');
+  const documents = path.join(directory, 'Documents');
+  database.setDatabasePathForTests(dbPath);
+  database.getDb();
+  const handlers = new Map();
+  const harness = { database, dbPath, documents, errors: [], calls: [], dialogBehavior: null };
+  const electron = {
+    app: { getPath: (name) => name === 'documents' ? documents : directory,
+      disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true, whenReady: () => ({ then() {} }), on() {}, quit() {} },
+    BrowserWindow: Object.assign(function () {}, { getAllWindows: () => [] }),
+    shell: { openExternal: async () => {}, openPath: async () => '' },
+    ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
+    dialog: { showErrorBox() {}, showMessageBox: async (...args) => {
+      const options = args.at(-1);
+      return harness.dialogBehavior ? harness.dialogBehavior(options) : { response: options.title === 'تأكيد البداية الجديدة' ? 1 : 0 };
+    } }
+  };
+  const nodeRequire = createRequire(path.join(root, 'main.js'));
+  const moduleStub = { exports: {} };
+  const context = vm.createContext({
+    require: (name) => name === 'electron' ? electron : nodeRequire(name),
+    module: moduleStub, exports: moduleStub.exports, __dirname: root, __filename: path.join(root, 'main.js'),
+    process: { env: process.env, platform: process.platform, on() {} },
+    console: { ...console, error: (...args) => harness.errors.push(args), warn: (...args) => harness.errors.push(args) },
+    Buffer, URL, setTimeout: () => 0, clearTimeout() {}, setInterval: () => 0
+  });
+  const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
+  vm.runInContext(`${main}\nmodule.exports = { registerIpcHandlers, validateBackupPayload, normalizeOrderPayload, normalizePurchasePayload };`, context, { filename: 'main.js' });
+  moduleStub.exports.registerIpcHandlers();
+  harness.validateBackupPayload = moduleStub.exports.validateBackupPayload;
+  harness.invoke = async (channel, payload) => {
+    harness.calls.push({ channel, payload });
+    if (!handlers.has(channel)) throw new Error(`Unknown IPC channel: ${channel}`);
+    return handlers.get(channel)({}, payload);
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'preload.js'), 'utf8'), {
+    require: (name) => {
+      if (name !== 'electron') throw new Error(`Unexpected preload dependency: ${name}`);
+      return { contextBridge: { exposeInMainWorld: (name, value) => { harness[name] = value; } },
+        ipcRenderer: { invoke: harness.invoke } };
+    }, console
+  }, { filename: 'preload.js' });
+  return harness;
+}
+
+function sampleOrder(db, overrides = {}) {
+  const data = db.getDashboardData();
+  const material = data.materials[0];
+  const printer = data.printers[0];
+  return { code: db.getNextOrderCode(), date: '2026-09-17', itemName: 'اختبار', customerName: 'عميل اختبار',
+    printerId: printer?.id, status: 'delivered', quantity: 1, printHours: 2, manualMinutes: 15,
+    materialCost: 80, wasteWeight: 0, wasteCost: 0, depreciationCost: 40, electricityCost: 1.5,
+    laborCost: 12.5, packagingCost: 10, accessoriesCost: 0, shippingCost: 0, riskCost: 14.4,
+    taxCost: 0, totalCost: 158.4, priceBeforeDiscount: 320, discountValue: 0,
+    priceAfterDiscount: 320, minimumOrderPrice: 0, roundedAdjustment: 0,
+    finalPrice: 320, profit: 161.6, unitFinalPrice: 320, unitTotalCost: 158.4, unitProfit: 161.6,
+    materialUsage: [{ materialId: material?.id, materialName: material?.name, grams: 100,
+      pricePerGram: 0.8, totalCost: 80 }], ...overrides };
+}
+module.exports = { createAppHarness, sampleOrder };

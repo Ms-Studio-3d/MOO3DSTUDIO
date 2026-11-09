@@ -1,0 +1,28 @@
+PASS: Actual sale button persists sale, consumes 100g and refreshes dashboard totals
+PASS: Report edit button and save button work without changing historical prices or consuming stock
+PASS: Validation errors remain visible over sales/edit panels
+PASS: Customer invoice excludes internal costs and profits
+PASS: Report delete button returns stock once and removes the displayed sale
+PASS: Actual backup file input restores data through preload/main validation
+PASS: Fresh-start UI requires typed confirmation and clears trading data while retaining pricing inputs
+PASS: UI reload keeps inventory empty, without recreating sample materials
+PASS: Reset controls remain reachable at 1200×720 and 1366×768
+PASS: No uncaught browser JavaScript errors during all scenarios
+{
+  "passed": 10,
+  "checks": [
+    "Actual sale button persists sale, consumes 100g and refreshes dashboard totals",
+    "Report edit button and save button work without changing historical prices or consuming stock",
+    "Validation errors remain visible over sales/edit panels",
+    "Customer invoice excludes internal costs and profits",
+    "Report delete button returns stock once and removes the displayed sale",
+    "Actual backup file input restores data through preload/main validation",
+    "Fresh-start UI requires typed confirmation and clears trading data while retaining pricing inputs",
+    "UI reload keeps inventory empty, without recreating sample materials",
+    "Reset controls remain reachable at 1200×720 and 1366×768",
+    "No uncaught browser JavaScript errors during all scenarios"
+  ],
+  "nativeElectronDialogs": "mocked",
+  "browser": "system Chromium",
+  "platform": "Linux"
+}

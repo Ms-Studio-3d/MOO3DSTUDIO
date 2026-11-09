@@ -1,0 +1,20 @@
+{
+  "sourceArchiveCommit": "acb6d8d9a12696a557d4f00c14f893cd117682dc",
+  "checks": [
+    {
+      "file": "js/pricing-core.js",
+      "stopBefore": null,
+      "sha256": "a08717344810b4291cae178ed770b719660bc6faa6045a0ed6ffb339a738cfda"
+    },
+    {
+      "file": "js/pricing-orders.js",
+      "stopBefore": "async function saveSale()",
+      "sha256": "f5898e6dcd85d54101a66f79f35f444e2be1a56d3cfcb6864cc5ae02eedcf488"
+    },
+    {
+      "file": "js/edit-orders.js",
+      "stopBefore": "function openEditSale(code)",
+      "sha256": "2df8272ed8bf2afc73751e239175d673b61a55178744714a3c249c5dd2a23423"
+    }
+  ]
+}
