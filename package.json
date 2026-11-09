@@ -1,7 +1,8 @@
 {
   "name": "moo3dstudio",
   "version": "0.0.1",
-  "description": "MOO3DSTUDIO desktop app for 3D printing pricing, orders, inventory, and local data management",
+  "productName": "MOO3D Farm",
+  "description": "MOO3D Farm desktop app for 3D printing pricing, orders, and inventory",
   "main": "main.js",
   "author": "Ms-Studio-3d",
   "license": "MIT",
@@ -34,10 +35,8 @@
   },
   "build": {
     "appId": "com.msstudio3d.moo3dstudio",
-    "productName": "MOO3DSTUDIO",
     "asar": true,
-    "buildVersion": "0.0.0.1",
-    "artifactName": "${productName}-${buildVersion}-${target}.${ext}",
+    "artifactName": "${productName}-${version}-${target}.${ext}",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -87,16 +86,16 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "artifactName": "${productName}-Setup-${buildVersion}.${ext}",
-      "shortcutName": "MOO3DSTUDIO",
-      "uninstallDisplayName": "MOO3DSTUDIO",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "shortcutName": "MOO3D Farm",
+      "uninstallDisplayName": "MOO3D Farm",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },
     "portable": {
-      "artifactName": "${productName}-Portable-${buildVersion}.${ext}"
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     },
     "publish": null,
     "asarUnpack": [

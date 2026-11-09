@@ -36,48 +36,6 @@ function bindLiveCalculationInputs() {
 
 function bindPaymentInputs() {}
 
-function bindSettingsLiveInputs() {
-  [
-    'farmName',
-    'currencyName',
-    'settingsDefaultProfitMargin',
-    'settingsDefaultManualMinutes',
-    'settingsLaborRate',
-    'settingsElectricityCostPerHour',
-    'settingsPrinterPowerKw',
-    'settingsPackagingCost',
-    'settingsFailurePercent',
-    'settingsDefaultWasteWeight',
-    'settingsMinimumOrderPrice',
-    'settingsAccessoriesCost',
-    'settingsShippingCost',
-    'settingsDefaultTaxPercent',
-    'settingsDefaultDiscountValue',
-    'settingsRoundingStep',
-    'settingsOpeningCash',
-    'settingsBaseMachineHours',
-    'settingsMaintenanceEveryHours',
-    'settingsLastMaintenanceAtHours',
-    'settingsMaintenanceCost'
-  ].forEach((id) => {
-    const el = $(id);
-    if (!el) return;
-
-    el.addEventListener('input', () => {
-      if (id === 'farmName') {
-        const appTitle = document.querySelector('.app-title');
-
-        if (appTitle) {
-          appTitle.innerText = getTrimmedValue(
-            'farmName',
-            DEFAULT_CONFIG.farmName
-          );
-        }
-      }
-    });
-  });
-}
-
 function bindGlobalKeyboardShortcuts() {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
@@ -142,7 +100,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   initializeDates();
 
   bindLiveCalculationInputs();
-  bindSettingsLiveInputs();
   bindPaymentInputs();
   bindGlobalKeyboardShortcuts();
   bindImportInput();

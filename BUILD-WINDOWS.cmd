@@ -1,7 +1,7 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title MOO3DSTUDIO 1.8.11 - Build Windows Installer
+title MOO3D Farm 0.0.1 - Build Windows Installer
 if not exist "package.json" goto wrong_folder
 where node >nul 2>nul
 if errorlevel 1 goto no_node

@@ -32,7 +32,9 @@ const {
 } = require('./database');
 const { normalizeResetOptions } = require('./reset-options');
 const { writeVerifiedBackup } = require('./backup-safety');
-const PRODUCT_NAME = 'MOO3DSTUDIO';
+const { productName: PRODUCT_NAME } = require('./package.json');
+const DATA_DIRECTORY_NAME = 'MOO3DSTUDIO';
+const BACKUP_APP_NAME = 'moo3dstudio';
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
@@ -43,7 +45,7 @@ let maintenanceBusy = false;
 
 function writeStartupError(error) {
   try {
-    const dir = path.join(app.getPath('documents'), PRODUCT_NAME, 'Logs');
+    const dir = path.join(app.getPath('documents'), DATA_DIRECTORY_NAME, 'Logs');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, 'startup-error.log');
     const text = `[${new Date().toISOString()}] ${error?.stack || error?.message || String(error)}\n`;
@@ -441,7 +443,7 @@ function validateCreateQuotePayload(data) {
 }
 
 function getBackupsDir() {
-  return path.join(app.getPath('documents'), PRODUCT_NAME, 'Backups');
+  return path.join(app.getPath('documents'), DATA_DIRECTORY_NAME, 'Backups');
 }
 
 function ensureBackupsDir() {
@@ -535,7 +537,7 @@ function validateBackupPayload(payload) {
   const schemaVersion = Number(data.schemaVersion || 0);
 
   const backupAppName = String(data.appName || '').toLowerCase();
-  if (backupAppName !== PRODUCT_NAME.toLowerCase() && !backupAppName.includes('print farm')) {
+  if (backupAppName !== BACKUP_APP_NAME && !backupAppName.includes('print farm')) {
     throw new Error('ملف النسخة الاحتياطية لا يبدو أنه خاص بالبرنامج');
   }
 
@@ -949,7 +951,7 @@ function registerIpcHandlers() {
   });
 }
 
-const userDataPath = path.join(app.getPath('appData'), PRODUCT_NAME);
+const userDataPath = path.join(app.getPath('appData'), DATA_DIRECTORY_NAME);
 fs.mkdirSync(userDataPath, { recursive: true });
 app.setPath('userData', userDataPath);
 app.disableHardwareAcceleration();

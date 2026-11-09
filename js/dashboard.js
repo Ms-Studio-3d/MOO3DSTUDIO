@@ -232,14 +232,6 @@ function renderPipelineDebounced() {
   debounceRender(() => renderPipeline(), 'pipeline_filters');
 }
 
-function updateTopTitle() {
-  const appTitle = document.querySelector('.app-title');
-  const farmName = dashboardData.config.farmName || DEFAULT_CONFIG.farmName;
-
-  if (appTitle) appTitle.innerText = farmName;
-  document.title = farmName;
-}
-
 function applyConfigToInputs() {
   const defaultProfitMargin = String(toPositiveNumber(dashboardData.config.defaultProfitMargin, DEFAULT_CONFIG.defaultProfitMargin));
   const defaultManualMinutes = String(toPositiveNumber(dashboardData.config.defaultManualMinutes, DEFAULT_CONFIG.defaultManualMinutes));
@@ -386,7 +378,6 @@ async function loadDashboardData() {
   }
 
   applyConfigToInputs();
-  updateTopTitle();
   updateCustomersDatalist();
   renderPrinters();
   renderPrinterSelects();
