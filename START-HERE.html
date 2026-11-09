@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MOO3D 1.8.11 — ابدأ هنا</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#eef2f6;color:#17283b;font-family:Tahoma,Arial,sans-serif;line-height:1.95}main{max-width:940px;margin:36px auto;background:#fff;padding:42px;border-radius:20px;box-shadow:0 8px 30px #17365216}header{border-bottom:4px solid #118277;padding-bottom:24px;margin-bottom:26px}.eyebrow{font-size:13px;letter-spacing:1px;color:#35627b}h1{font-size:31px;line-height:1.5;margin:10px 0}h2{margin:34px 0 12px;font-size:23px}h3{font-size:18px;margin:20px 0 8px}p{margin:10px 0}.lead{font-size:18px;color:#365570}.box{padding:18px 22px;border-radius:12px;margin:18px 0;background:#edf8f5;border:1px solid #bbded4}.warning{background:#fff6e6;border-color:#ecd09a}.danger{background:#fff0f0;border-color:#eab8bd}table{width:100%;border-collapse:collapse;margin:18px 0}th,td{text-align:right;border-bottom:1px solid #dce4eb;padding:13px;vertical-align:top}th{background:#edf3f7}code,bdi{direction:ltr;unicode-bidi:isolate}code{background:#eff3f7;padding:3px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:.94em}li{margin:10px 0}a{color:#076e8d}small{color:#5b6e80}.step{font-weight:bold;color:#08766c}.footer{margin-top:38px;padding-top:20px;border-top:1px solid #dce4eb;color:#5b6e80;font-size:13px}@media(max-width:680px){main{margin:0;padding:22px;border-radius:0}h1{font-size:25px}th,td{padding:9px}}@media print{body{background:white}main{box-shadow:none;margin:0;padding:12px}h2{break-after:avoid}.box,table{break-inside:avoid}}
+</style></head>
+<body><main>
+<header><div class="eyebrow">MOO3D • STABILITY SOURCE BUILD • 1.8.11</div><h1>ابدأ هنا — تحديث البرنامج وبداية جديدة آمنة</h1><p class="lead">ملفات البرنامج معدّلة بالفعل. طريقة التسعير كما هي، والتصفير لا يحدث تلقائيًا.</p></header>
+<div class="box warning"><strong>حالة الملف:</strong> هذه حزمة مصدر كاملة وليست ملف تثبيت <bdi>EXE</bdi>. يلزم بناء المثبت على Windows، أو من GitHub Actions بالطريقة الموضحة أدناه. لا تفتح <code>index.html</code> لتشغيل البرنامج؛ الواجهة وحدها لا تحتوي على خدمة قاعدة البيانات.</div>
+<h2>١. قبل أي تحديث</h2>
+<p>افتح النسخة القديمة المثبتة لديك، ثم <strong>الإعدادات ← تصدير Backup</strong>. احفظ ملف <bdi>JSON</bdi> في مكان واضح، وانسخ نسخة ثانية على فلاشة أو قرص آخر. احتفظ كذلك بملف تثبيت الإصدار القديم إلى أن تنتهي التجربة.</p>
+<p>اقفل البرنامج القديم قبل تثبيت الإصدار الجديد. <strong>لا تحذف قاعدة البيانات يدويًا ولا تمسح مجلد بيانات البرنامج.</strong> تشغيل ملف البناء لا يمسح بيانات شغلك؛ التصفير له زر مستقل داخل البرنامج.</p>
+<div class="box danger">لا ترفع قاعدة بيانات شغلك أو ملفات النسخ الاحتياطية أو بيانات العملاء إلى مستودع GitHub العام. ارفع ملفات المصدر الموجودة في هذه الحزمة فقط.</div>
+<h2>٢. استخراج ملف تثبيت Windows بدون كتابة كود</h2>
+<h3>الطريقة الأولى: من GitHub، بدون تثبيت أدوات على جهازك</h3>
+<ol>
+<li>فك ضغط الحزمة. ادخل المجلد الذي يحتوي على <code>package.json</code> و<code>main.js</code> و<code>START-HERE.html</code>.</li>
+<li>افتح مستودعك <bdi>Ms-Studio-3d/print-farm-app</bdi> من حسابك الذي يملك صلاحية التعديل. استخدم <bdi>Add file → Upload files</bdi> لرفع <strong>محتويات مجلد المشروع</strong> واستبدال الملفات القديمة، ثم احفظ التغيير باستخدام <bdi>Commit changes</bdi>. لا ترفع ملف ZIP نفسه ولا تضع المصدر داخل مجلد إضافي فوق <code>package.json</code>.</li>
+<li>تأكد خصوصًا من تحديث <code>.github/workflows/build-clean.yml</code> الموجود داخل الحزمة. اسم المجلد يبدأ بنقطة؛ أظهر العناصر المخفية في مستكشف الملفات عند الحاجة. إن لم يدخل ضمن الرفع، افتح الملف نفسه على GitHub واستبدل محتواه بالمحتوى الموجود في الحزمة باستخدام النسخ واللصق فقط.</li>
+<li>اذهب إلى <bdi>Actions → Build Windows Installer</bdi>. قد يبدأ تلقائيًا بعد الحفظ على <bdi>main</bdi>. ويمكن تشغيله يدويًا من <bdi>Run workflow</bdi> واختيار الفرع الذي رفعت إليه الملفات.</li>
+<li>بعد ظهور علامة النجاح الخضراء، افتح نتيجة التشغيل، ثم قسم <bdi>Artifacts</bdi>، وحمّل <code>MOO3D-Windows-Installer-1.8.11</code>. فك ضغطه للحصول على ملف <code>MOO3D Business Manager-Setup-1.8.11.exe</code>.</li>
+</ol>
+<p>إن ظهر فشل أحمر، لا تستخدم نتيجة تشغيل قديمة على أنها الإصدار الجديد. افتح الخطوة الفاشلة واحتفظ برسالة الخطأ. سير البناء مهيأ لإيقاف العملية إذا فشلت الاختبارات أو تحميل SQLite داخل Electron.</p>
+<h3>الطريقة الثانية: من جهاز Windows</h3>
+<p>هذه الطريقة تتطلب <strong>Node.js 22.x</strong> واتصال إنترنت لتنزيل الاعتمادات. بعد تثبيته من الموقع الرسمي، فك الحزمة كاملة واضغط مرتين على <code>BUILD-WINDOWS.cmd</code>. لا تحتاج كتابة أو تعديل كود.</p>
+<p>اترك النافذة مفتوحة حتى تنتهي. السكربت ينزل الاعتمادات، ويشغّل الاختبارات، ويجهز SQLite لـElectron، ثم يبني المثبت. عند النجاح يفتح مجلد <code>dist</code>. عند الفشل يفتح <code>build-windows.log</code> بدل الاستمرار بتثبيت غير مكتمل. تنزيل الاعتمادات وبناء مثبت Windows لم يُنفذا في بيئة تسليم هذه الحزمة، لذلك يلزم تحقق النتيجة على جهازك.</p>
+<h2>٣. ما الذي اتصلح؟</h2>
+<p>تعديل وحذف البيعة من المبيعات، ظهور رسائل الخطأ فوق النوافذ، الحفاظ على تكاليف البيعة القديمة عند تعديل بياناتها فقط، وتحديث أرقام المبيعات والكاش بعد الحفظ. كذلك إنشاء خامة من المشتريات، واسترجاع النسخ التي تحتوي على خامات مرتجعة أو كميات أكبر من وزن البكرة المرجعي، وحفظ نسخة أمان قبل الاستيراد.</p>
+<p>الفاتورة أصبحت نسخة عميل لا تعرض تكلفة الإنتاج أو الربح أو الملاحظات الداخلية. وإعادة فتح قاعدة بيانات فارغة عمدًا لم تعد تعيد الخامات والأصول الافتراضية المحذوفة.</p>
+<div class="box"><strong>طريقة الحساب محفوظة:</strong> محرك التسعير ودوال الحساب الأصلية تم التحقق منها ببصمة <bdi>SHA-256</bdi>. لم تتغير نسب الربح أو التقريب أو معادلات الكهرباء والصيانة والإهلاك. حذف الأصول أو تغيير أسعار الخامات يغير <em>قيم المدخلات</em> بطبيعة الحال، وليس المعادلة.</div>
+<h2>٤. تصفير المبيعات والخامات والبدء من جديد</h2>
+<p>بعد تثبيت الإصدار الجديد افتح <strong>الإعدادات ← بداية جديدة / تصفير البيانات</strong>. اقرأ نطاق المسح، واكتب <strong>بداية جديدة</strong> في خانة التأكيد، ثم اضغط <strong>حفظ نسخة أمان ثم بدء صفحة جديدة</strong>. ستظهر نافذة تأكيد ثانية؛ الإلغاء لا يمسح شيئًا.</p>
+<table><thead><tr><th>البند</th><th>السلوك الافتراضي</th></tr></thead><tbody>
+<tr><td>كل المبيعات والأوردرات والعروض والمشتريات والخامات وحركاتها</td><td>تُمسح بالكامل، وليس نتائج البحث فقط.</td></tr>
+<tr><td>إجمالي المبيعات والأرباح وعدد الطلبات وكاش البداية</td><td>تبدأ من صفر؛ بعدها أدخل رصيد الكاش الحقيقي.</td></tr>
+<tr><td>أسماء العملاء</td><td>مشتقة من الأوردرات؛ تزول بزوال الأوردرات.</td></tr>
+<tr><td>الطابعات والأصول وإعدادات التسعير</td><td>تظل كما هي. حذف الطابعات أو الأصول اختيار إضافي غير محدد افتراضيًا.</td></tr>
+<tr><td>إجمالي ساعات الماكينة وآخر صيانة</td><td>يتم الحفاظ عليها؛ ساعات المبيعات القديمة تُنقل إلى ساعات البداية. التصفير الكامل له اختيار مستقل.</td></tr>
+<tr><td>تسلسل أرقام الأوردرات والعروض</td><td>يستمر ولا يبدأ تلقائيًا من جديد. اختيار مستقل يسمح بالبدء من <bdi>ORD-1001 / Q-1001</bdi> للبيانات التجريبية فقط.</td></tr>
+</tbody></table>
+<p><strong>للحفاظ على نفس مدخلات التسعير:</strong> اترك اختياري حذف الطابعات والأصول غير محددين. يمكن مسح الخامات وإضافة مخزونك الحقيقي دون مسح الأصول.</p>
+<p>قبل المسح تُكتب نسخة مؤكدة في <code>Documents/MOO3D/Backups/Protected</code>. إذا فشل حفظ النسخة تتوقف العملية قبل المسح. هذه النسخ المحمية لا تُحذف ضمن تدوير آخر عشر نسخ تلقائية؛ راقب مساحة القرص وانسخ المهم إلى مكان خارجي.</p>
+<p>بعد النجاح يظهر مكان الملف كاملًا. زر <strong>فتح مجلد نسخ الأمان</strong> يوصلك إليه. لاستعادة البيانات السابقة استخدم <strong>الإعدادات ← استيراد Backup</strong> واختر ملف ما قبل التصفير. الاستيراد يستبدل البيانات الحالية؛ لا يدمجها مع شغل أدخلته بعد ذلك.</p>
+<h2>٥. تجربة القبول قبل أول يوم شغل</h2>
+<ol>
+<li>استخدم بيانات تجريبية، واجعل رصيد خامة <strong>١٠٠٠ جرام</strong>. سجل بيعة تستخدم <strong>١٠٠ جرام</strong>. ينبغي أن يبقى <strong>٩٠٠ جرام</strong> وأن تظهر البيعة في المبيعات ويتحدث الـDashboard.</li>
+<li>من المبيعات اضغط <strong>تعديل</strong>، وغير اسم العميل فقط ثم احفظ. ينبغي أن يظل المخزون <strong>٩٠٠ جرام</strong> والسعر والتكلفة والربح كما كانوا. اقفل البرنامج وافتحه وتحقق من استمرار التعديل.</li>
+<li>احذف البيعة التجريبية. ينبغي أن تختفي ويرجع الرصيد <strong>١٠٠٠ جرام مرة واحدة فقط</strong>. اختبر أيضًا تصدير نسخة واسترجاعها قبل إدخال بيانات مهمة.</li>
+<li>جرّب التصفير على البيانات التجريبية، ثم اقفل البرنامج وافتحه: الخامات ينبغي أن تظل فارغة. أدخل مخزونك وكاش البداية الحقيقيين، وراجع الطابعات والأصول قبل العمل.</li>
+</ol>
+<div class="box danger"><strong>مهم بخصوص الحذف:</strong> حذف البيعة هنا يصحح تسجيلًا خاطئًا ويرجع خاماتها للمخزون. لا تستخدمه لمرتجع عميل لقطعة طُبعت بالفعل؛ الخامة المستهلكة فعليًا لا ترجع بكرة خام بمجرد حذف الفاتورة.</div>
+<h2>٦. حدود النسخة والاختبارات</h2>
+<p>نجحت الاختبارات الأصلية، و<strong>٣٠ سيناريو ثبات</strong> على قاعدة SQLite حقيقية عبر طبقات البرنامج، و<strong>١٠ سيناريوهات واجهة</strong> في Chromium على Linux. تضمنت تجربة الأزرار نفسها، وليس مجرد البحث عن أسمائها في الملفات.</p>
+<p><strong>لم يُختبر هنا ملف تثبيت Windows أو النوافذ الأصلية للنظام أو الطباعة الفعلية.</strong> اختبارات الواجهة استخدمت بديلًا تجريبيًا لنافذة التأكيد، واختبارات SQLite استخدمت مشغل Node المتوافق الموجود أصلًا في المشروع. اختبار Electron/SQLite الأصلي مضاف إلى مسار بناء Windows ليعمل هناك.</p>
+<p>هذه ليست إعادة بناء لكل سياسات البرنامج: الدفع الكامل الكاش وحالة الأوردر الأولية كما في المصدر القديم. الهالك الإضافي يحتفظ بطريقة تسعيره الحالية؛ خصم المخزون ما زال يعتمد على صفوف استهلاك الخامات ولا يوزع الهالك الإضافي تلقائيًا. تحديث Electron والأمان الشامل وربط الطابعات الفعلية خارج نطاق هذا الإصلاح.</p>
+<p>للتفاصيل الفنية راجع <code>docs/CHANGELOG-1.8.11.md</code> و<code>docs/TEST-REPORT.md</code>. لا توجد بيانات عملاء حقيقية داخل هذه الحزمة.</p>
+<div class="footer"><strong>مراجع تعليمات البناء:</strong> <a href="https://docs.github.com/en/repositories/working-with-files/managing-files/adding-a-file-to-a-repository">رفع الملفات إلى GitHub</a> · <a href="https://docs.github.com/actions/managing-workflow-runs/manually-running-a-workflow">تشغيل Workflow</a> · <a href="https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts">تنزيل Artifacts</a> · <a href="https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules">مكتبات Electron الأصلية</a>.<br>أُعدّ في ١٧ سبتمبر ٢٠٢٦. تعديل ملفات المصدر لا يحدّث المستودع أو البرنامج المثبت تلقائيًا.</div>
+</main></body></html>

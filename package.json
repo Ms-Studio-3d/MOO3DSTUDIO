@@ -1,0 +1,107 @@
+{
+  "name": "printing-business-manager",
+  "version": "1.8.11",
+  "description": "MOO3D desktop app for 3D printing pricing, orders, inventory, and local data management",
+  "main": "main.js",
+  "author": "Ms-Studio-3d",
+  "license": "MIT",
+  "keywords": [
+    "electron",
+    "3d-printing",
+    "business-manager",
+    "desktop-app",
+    "inventory",
+    "sqlite"
+  ],
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "rebuild": "electron-builder install-app-deps",
+    "build": "electron-builder --dir",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:win": "electron-builder --win nsis --publish never",
+    "dist:installer": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never",
+    "test": "node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js",
+    "test:stability": "node tests/stability.test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "11.8.1"
+  },
+  "devDependencies": {
+    "electron": "31.0.2",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.msstudio3d.businessmanager",
+    "productName": "MOO3D Business Manager",
+    "asar": true,
+    "artifactName": "${productName}-${version}-${target}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "database.js",
+      "backup-worker.js",
+      "backup-safety.js",
+      "reset-options.js",
+      "index.html",
+      "style.css",
+      "package.json",
+      "js/**/*",
+      "node_modules/**/*",
+      "!**/.git/**/*",
+      "!**/.github/**/*",
+      "!**/.cache/**/*",
+      "!**/dist/**/*",
+      "!**/build-installer.yml",
+      "!**/*.md",
+      "!**/*.map",
+      "!**/*.log",
+      "!**/test/**/*",
+      "!**/tests/**/*",
+      "!**/docs/**/*",
+      "!**/coverage/**/*",
+      "!**/.vscode/**/*",
+      "!**/.idea/**/*"
+    ],
+    "extraMetadata": {
+      "main": "main.js"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "publisherName": "Ms-Studio-3d"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "shortcutName": "Print Farm App",
+      "uninstallDisplayName": "Print Farm App",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "publish": null,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/**/*.node"
+    ]
+  },
+  "packageManager": "npm@10.9.2"
+}
