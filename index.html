@@ -862,13 +862,13 @@
   </div>
 
   <div class="modal app-panel" id="settingsModal" aria-hidden="true">
-    <div class="modal-content modal-lg panel-content">
+    <div class="modal-content panel-content settings-panel">
       <div class="panel-head">
         <button type="button" onclick="closeSettingsModal()" class="btn btn-secondary btn-auto">رجوع</button>
         <h2>الإعدادات — <bdi>0.0.1</bdi></h2>
       </div>
 
-      <div class="grid-3">
+      <div class="settings-fields">
         <div class="form-group">
           <label for="farmName">اسم المشروع على الفاتورة</label>
           <input type="text" id="farmName" value="MOO3DSTUDIO" />
@@ -883,9 +883,7 @@
           <label for="settingsDefaultProfitMargin">زيادة على التكلفة الافتراضية %</label>
           <input type="text" id="settingsDefaultProfitMargin" value="100" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-3 section-gap-sm">
         <div class="form-group">
           <label for="settingsDefaultManualMinutes">دقائق خدمة / شغل يدوي افتراضية</label>
           <input type="text" id="settingsDefaultManualMinutes" value="15" inputmode="decimal" />
@@ -900,9 +898,7 @@
           <label for="settingsPackagingCost">التغليف الافتراضي</label>
           <input type="text" id="settingsPackagingCost" value="10" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-3 section-gap-sm">
         <div class="form-group">
           <label for="settingsElectricityCostPerHour">سعر الكهرباء / kWh</label>
           <input type="text" id="settingsElectricityCostPerHour" value="3" inputmode="decimal" />
@@ -922,9 +918,7 @@
           <label for="settingsDefaultWasteWeight">وزن الهالك الافتراضي / جرام</label>
           <input type="text" id="settingsDefaultWasteWeight" value="0" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-3 section-gap-sm">
         <div class="form-group">
           <label for="settingsMinimumOrderPrice">الحد الأدنى الافتراضي للأوردر</label>
           <input type="text" id="settingsMinimumOrderPrice" value="0" inputmode="decimal" />
@@ -939,9 +933,7 @@
           <label for="settingsShippingCost">شحن افتراضي</label>
           <input type="text" id="settingsShippingCost" value="0" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-3 section-gap-sm">
         <div class="form-group">
           <label for="settingsDefaultDiscountValue">الخصم الافتراضي</label>
           <input type="text" id="settingsDefaultDiscountValue" value="0" inputmode="decimal" />
@@ -956,9 +948,7 @@
           <label for="settingsDefaultTaxPercent">الضريبة الافتراضية %</label>
           <input type="text" id="settingsDefaultTaxPercent" value="0" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-3 section-gap-sm">
         <div class="form-group">
           <label for="settingsOpeningCash">كاش بداية الدرج</label>
           <input type="text" id="settingsOpeningCash" value="0" inputmode="decimal" />
@@ -973,9 +963,7 @@
           <label for="settingsMaintenanceEveryHours">الصيانة كل كام ساعة</label>
           <input type="text" id="settingsMaintenanceEveryHours" value="1000" inputmode="decimal" />
         </div>
-      </div>
 
-      <div class="grid-2 section-gap-sm">
         <div class="form-group">
           <label for="settingsLastMaintenanceAtHours">آخر صيانة تمت عند ساعة</label>
           <input type="text" id="settingsLastMaintenanceAtHours" value="0" inputmode="decimal" />
@@ -987,22 +975,12 @@
         </div>
       </div>
 
-      <div class="helper-box section-gap-sm">
-        <strong>كاش الدرج والصيانة:</strong>
-        <span>Dashboard يحسب كاش الدرج من كاش البداية + المحصل من المبيعات - المشتريات، ويحسب لمبة الصيانة من ساعات التشغيل السابقة + ساعات الأوردرات.</span>
-      </div>
-
-      <div class="helper-box section-gap-sm">
-        <strong>فكرة الإعدادات الافتراضية:</strong>
-        <span>كل أوردر جديد سيبدأ بهذه القيم تلقائيًا. الكهرباء = سعر kWh × استهلاك الطابعة kW × عدد ساعات الطباعة.</span>
-        <span>دقائق الخدمة الافتراضية تمثل وقت التجهيز، مراجعة الملف، فك القطعة، التنظيف البسيط، والتواصل مع العميل.</span>
-      </div>
-
-      <div class="helper-box section-gap-sm">
-        <strong>توافق الحساب:</strong>
-        <span>طريقة الحساب هنا متزنة: تكلفة ساعة الطابعة تعني تشغيل فقط، وإهلاك الأصول ونصيب الصيانة يتحسبوا مرة واحدة تلقائيًا داخل سعر الطلب.</span>
-        <span>لو غيرت تكلفة الأصل أو ساعات الإهلاك أو تكلفة الصيانة، التسعير هيتحدث بناءً على الأرقام الجديدة.</span>
-      </div>
+      <details class="settings-help">
+        <summary>شرح الإعدادات</summary>
+        <p><strong>كاش الدرج والصيانة.</strong> Dashboard يحسب كاش الدرج من كاش البداية + المحصل من المبيعات - المشتريات، ويحسب لمبة الصيانة من ساعات التشغيل السابقة + ساعات الأوردرات.</p>
+        <p><strong>الإعدادات الافتراضية.</strong> كل أوردر جديد سيبدأ بهذه القيم تلقائيًا. الكهرباء = سعر kWh × استهلاك الطابعة kW × عدد ساعات الطباعة. دقائق الخدمة تشمل وقت التجهيز، مراجعة الملف، فك القطعة، التنظيف البسيط، والتواصل مع العميل.</p>
+        <p><strong>تكلفة الطابعة.</strong> تكلفة ساعة الطابعة تعني التشغيل فقط. التسعير يضيف إهلاك الأصول ونصيب الصيانة مرة واحدة، ويتحدث عند تغيير تكلفة الأصل أو ساعات الإهلاك أو تكلفة الصيانة.</p>
+      </details>
 
       <div class="inline-actions section-gap-md">
         <button type="button" class="btn btn-primary" onclick="saveSettings()">حفظ الإعدادات</button>

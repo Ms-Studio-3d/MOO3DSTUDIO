@@ -3052,4 +3052,64 @@ button[onclick="saveQuote()"] {
 .reset-result { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; user-select: text; }
 .reset-warning p { margin-top: 8px; line-height: 1.8; }
 #reportsModal tbody td:last-child { min-width: 220px; }
-#editModal .modal-content, #settingsModal .modal-content { max-height: calc(100vh - 24px); overflow-y: auto !important; }
+#editModal .modal-content { max-height: calc(100vh - 24px); overflow-y: auto !important; }
+
+#settingsModal .settings-panel {
+  width: min(1120px, calc(100% - 28px));
+  height: auto;
+  max-height: calc(100vh - 28px);
+}
+
+.settings-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.settings-fields label {
+  margin-bottom: 4px;
+}
+
+.settings-fields input {
+  height: 36px;
+  padding-block: 7px;
+}
+
+.settings-help {
+  margin-top: 14px;
+  padding: 9px 12px;
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.settings-help summary {
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.settings-help p {
+  margin: 8px 0 0;
+}
+
+@media (max-width: 900px) {
+  .settings-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 650px) {
+  .settings-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 410px) {
+  .settings-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
