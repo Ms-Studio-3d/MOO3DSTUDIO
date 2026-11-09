@@ -1,5 +1,7 @@
-const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const { wrap } = require('node:module');
 const path = require('node:path');
+const { Script } = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const files = [
@@ -32,12 +34,11 @@ const files = [
 ];
 
 for (const file of files) {
-  execFileSync(process.execPath, ['--check', path.join(root, file)], { stdio: 'pipe' });
+  const filename = path.join(root, file);
+  new Script(wrap(fs.readFileSync(filename, 'utf8')), { filename });
 }
 
 console.log(`Syntax checks passed for ${files.length} JavaScript files`);
-
-const fs = require('node:fs');
 
 const databaseSource = fs.readFileSync(path.join(root, 'database.js'), 'utf8');
 const exportMatch = databaseSource.match(/module\.exports\s*=\s*\{([\s\S]*?)\};/);

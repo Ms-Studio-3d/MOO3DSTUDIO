@@ -32,6 +32,7 @@ const {
 } = require('./database');
 const { normalizeResetOptions } = require('./reset-options');
 const { writeVerifiedBackup } = require('./backup-safety');
+const PRODUCT_NAME = 'MOO3DSTUDIO';
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
@@ -42,7 +43,7 @@ let maintenanceBusy = false;
 
 function writeStartupError(error) {
   try {
-    const dir = path.join(app.getPath('documents'), 'MOO3D', 'Logs');
+    const dir = path.join(app.getPath('documents'), PRODUCT_NAME, 'Logs');
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, 'startup-error.log');
     const text = `[${new Date().toISOString()}] ${error?.stack || error?.message || String(error)}\n`;
@@ -56,7 +57,7 @@ function writeStartupError(error) {
 process.on('uncaughtException', (error) => {
   const logFile = writeStartupError(error);
   try {
-    dialog.showErrorBox('MOO3D Startup Error', `${error?.message || error}\n${logFile ? `\nLog: ${logFile}` : ''}`);
+    dialog.showErrorBox(`${PRODUCT_NAME} Startup Error`, `${error?.message || error}\n${logFile ? `\nLog: ${logFile}` : ''}`);
   } catch (_) {}
 });
 
@@ -171,7 +172,7 @@ function createMainWindow() {
     center: true,
     autoHideMenuBar: true,
     backgroundColor: '#050807',
-    title: '3D Print Farm App',
+    title: PRODUCT_NAME,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -440,7 +441,7 @@ function validateCreateQuotePayload(data) {
 }
 
 function getBackupsDir() {
-  return path.join(app.getPath('documents'), 'MOO3D', 'Backups');
+  return path.join(app.getPath('documents'), PRODUCT_NAME, 'Backups');
 }
 
 function ensureBackupsDir() {
@@ -533,7 +534,8 @@ function validateBackupPayload(payload) {
   const data = asObject(payload);
   const schemaVersion = Number(data.schemaVersion || 0);
 
-  if (!data.appName || !String(data.appName).toLowerCase().includes('print farm')) {
+  const backupAppName = String(data.appName || '').toLowerCase();
+  if (backupAppName !== PRODUCT_NAME.toLowerCase() && !backupAppName.includes('print farm')) {
     throw new Error('ملف النسخة الاحتياطية لا يبدو أنه خاص بالبرنامج');
   }
 
@@ -947,6 +949,9 @@ function registerIpcHandlers() {
   });
 }
 
+const userDataPath = path.join(app.getPath('appData'), PRODUCT_NAME);
+fs.mkdirSync(userDataPath, { recursive: true });
+app.setPath('userData', userDataPath);
 app.disableHardwareAcceleration();
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) app.quit();
@@ -974,7 +979,7 @@ app.whenReady().then(() => {
     });
   } catch (error) {
     const logFile = writeStartupError(error);
-    dialog.showErrorBox('MOO3D لم يبدأ', `${error?.message || error}\n${logFile ? `\nتم حفظ التفاصيل في: ${logFile}` : ''}`);
+    dialog.showErrorBox(`${PRODUCT_NAME} لم يبدأ`, `${error?.message || error}\n${logFile ? `\nتم حفظ التفاصيل في: ${logFile}` : ''}`);
     app.quit();
   }
 });

@@ -61,16 +61,16 @@ function getDatabaseDriver() {
 }
 
 function getDatabasePath() {
-  if (process.env.MOO3D_DB_PATH) {
-    return process.env.MOO3D_DB_PATH;
+  if (process.env.MOO3DSTUDIO_DB_PATH) {
+    return process.env.MOO3DSTUDIO_DB_PATH;
   }
 
   if (electronApp && typeof electronApp.getPath === 'function') {
     const userDataPath = electronApp.getPath('userData');
-    return path.join(userDataPath, '3d-printing-business-manager.db');
+    return path.join(userDataPath, 'moo3dstudio.db');
   }
 
-  return path.join(process.cwd(), '3d-printing-business-manager.db');
+  return path.join(process.cwd(), 'moo3dstudio.db');
 }
 
 function setDatabasePathForTests(dbPath) {
@@ -79,7 +79,7 @@ function setDatabasePathForTests(dbPath) {
     db = null;
   }
 
-  process.env.MOO3D_DB_PATH = String(dbPath || '').trim();
+  process.env.MOO3DSTUDIO_DB_PATH = String(dbPath || '').trim();
 }
 
 function getDb(options = {}) {
@@ -336,11 +336,10 @@ function backfillPricingBreakdown() {
 
 function seedDefaults() {
   const printersCount = db.prepare('SELECT COUNT(*) AS count FROM printers').get().count;
-  const materialsCount = db.prepare('SELECT COUNT(*) AS count FROM materials').get().count;
   const assetsCount = db.prepare('SELECT COUNT(*) AS count FROM assets').get().count;
 
   const defaults = {
-    farmName: 'Print Farm App',
+    farmName: 'MOO3DSTUDIO',
     currencyName: 'جنيه',
     laborRate: '50',
     electricityCostPerHour: '3',
@@ -358,8 +357,8 @@ function seedDefaults() {
     defaultProfitMargin: '100',
     defaultManualMinutes: '15',
     defaultDiscountValue: '0',
-    openingCash: '5200',
-    baseMachineHours: '150',
+    openingCash: '0',
+    baseMachineHours: '0',
     maintenanceEveryHours: '1000',
     lastMaintenanceAtHours: '0',
     maintenanceCost: '1500'
@@ -466,18 +465,6 @@ function seedDefaults() {
       'الطابعة الأساسية - Bambu Lab A1 — تكلفة تشغيل الطابعة فقط. التسعير يضيف إهلاك الأصول ونصيب الصيانة مرة واحدة تلقائيًا.',
       0
     );
-  }
-
-  if (materialsCount === 0) {
-    const insertMaterial = db.prepare(`
-      INSERT INTO materials (name, type, color, weight, remaining, price, low_stock_threshold, supplier, is_archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    insertMaterial.run('PLA Black', 'PLA', 'Black', 1000, 1000, 800, 150, '', 0);
-    insertMaterial.run('PLA White', 'PLA', 'White', 1000, 1000, 800, 150, '', 0);
-    insertMaterial.run('PLA Red', 'PLA', 'Red', 1000, 1000, 800, 150, '', 0);
-    insertMaterial.run('PLA Silk Gold', 'PLA Silk', 'Gold', 1000, 1000, 1200, 150, '', 0);
   }
 
   if (assetsCount === 0) {
@@ -2513,7 +2500,7 @@ function exportBackupData() {
 
   return {
     exportedAt: new Date().toISOString(),
-    appName: 'Print Farm App',
+    appName: 'MOO3DSTUDIO',
     schemaVersion: 9,
     ...data,
     printers: [...data.printers, ...archivedPrinters],

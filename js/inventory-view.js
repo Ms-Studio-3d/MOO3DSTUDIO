@@ -89,13 +89,8 @@ function renderMaterialUsageInputs() {
     return;
   }
 
-  // مهم: لا نستبدل selectedOrderMaterialIds بالصفوف الموجودة في الـ DOM فقط.
-  // عند الضغط على زر إضافة خامة، الخامة الجديدة تكون لسه مش مرسومة في الـ DOM،
-  // ولو اعتمدنا على الـ DOM فقط الزر يبدو كأنه لا يعمل، خصوصًا عند إضافة خامة ثانية.
-  const idsFromDom = previousRows.map((row) => String(row.id));
-  const idsFromState = (selectedOrderMaterialIds || []).map(String);
-
-  selectedOrderMaterialIds = [...idsFromDom, ...idsFromState]
+  // الاختيارات تحدد الصفوف، والصفوف القديمة تحفظ الجرامات فقط.
+  selectedOrderMaterialIds = (selectedOrderMaterialIds || [])
     .map((id) => String(id || '').trim())
     .filter((id, index, list) => id && list.indexOf(id) === index && getMaterialById(id));
 

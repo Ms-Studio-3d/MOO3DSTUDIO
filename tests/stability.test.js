@@ -17,7 +17,7 @@ const getOrder = (code) => h.database.getDataPage('orders', { includeAll: true }
 async function workerBackup(reason) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, '../backup-worker.js'), { workerData: {
-      dbPath: h.dbPath, backupsDir: path.join(h.documents, 'MOO3D/Backups'), reason
+      dbPath: h.dbPath, backupsDir: path.join(h.documents, 'MOO3DSTUDIO/Backups'), reason
     } });
     worker.once('message', (msg) => msg.success ? resolve(msg.filePath) : reject(new Error(msg.message)));
     worker.once('error', reject);
@@ -26,6 +26,19 @@ async function workerBackup(reason) {
 }
 
 (async () => {
+  await test('new installation isolates its app profile and starts with no trading data', () => {
+    h = createAppHarness(path.join(temporary, 'clean'), { withSampleMaterials: false });
+    assert.equal(h.appPaths.userData, path.join(h.appPaths.appData, 'MOO3DSTUDIO'));
+    const data = full();
+    for (const field of ['materials', 'orders', 'quotes', 'purchases', 'stockMovements']) {
+      assert.equal(data[field].length, 0, field);
+    }
+    assert.equal(data.config.farmName, 'MOO3DSTUDIO');
+    assert.equal(data.config.openingCash, '0');
+    assert.equal(data.config.baseMachineHours, '0');
+    assert.doesNotThrow(() => h.validateBackupPayload(data));
+    assert.doesNotThrow(() => h.validateBackupPayload({ ...data, appName: 'Print Farm App' }));
+  });
   fresh('sales');
   const order = sampleOrder(h.database), materialId = order.materialUsage[0].materialId;
   await test('preload → main → SQLite sale consumes 100g exactly once', async () => {
@@ -124,8 +137,8 @@ async function workerBackup(reason) {
   await test('failed safety backup blocks reset before any DELETE', async () => {
     fresh('backup-failure');
     const before = full();
-    fs.mkdirSync(path.join(h.documents, 'MOO3D/Backups'), { recursive: true });
-    fs.writeFileSync(path.join(h.documents, 'MOO3D/Backups/Protected'), 'not a directory');
+    fs.mkdirSync(path.join(h.documents, 'MOO3DSTUDIO/Backups'), { recursive: true });
+    fs.writeFileSync(path.join(h.documents, 'MOO3DSTUDIO/Backups/Protected'), 'not a directory');
     assert.equal((await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' })).success, false);
     assert.deepEqual(full().materials, before.materials);
     assert.deepEqual(full().config, before.config);
@@ -216,7 +229,7 @@ async function workerBackup(reason) {
     assert.equal(full().materials[0].price / full().materials[0].weight, 0.8);
   });
   await test('automatic rotation keeps protected backups', async () => {
-    const backupsDir = path.join(h.documents, 'MOO3D/Backups');
+    const backupsDir = path.join(h.documents, 'MOO3DSTUDIO/Backups');
     fs.mkdirSync(backupsDir, { recursive: true });
     for (let i = 0; i < 12; i++) fs.writeFileSync(path.join(backupsDir, `moo3d-backup-old-${i}.json`), '{}');
     const protectedPath = path.join(backupsDir, 'Protected');

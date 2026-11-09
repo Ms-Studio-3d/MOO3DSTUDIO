@@ -1,7 +1,7 @@
 {
-  "name": "printing-business-manager",
+  "name": "moo3dstudio",
   "version": "1.8.11",
-  "description": "MOO3D desktop app for 3D printing pricing, orders, inventory, and local data management",
+  "description": "MOO3DSTUDIO desktop app for 3D printing pricing, orders, inventory, and local data management",
   "main": "main.js",
   "author": "Ms-Studio-3d",
   "license": "MIT",
@@ -33,8 +33,8 @@
     "electron-builder": "24.13.3"
   },
   "build": {
-    "appId": "com.msstudio3d.businessmanager",
-    "productName": "MOO3D Business Manager",
+    "appId": "com.msstudio3d.moo3dstudio",
+    "productName": "MOO3DSTUDIO",
     "asar": true,
     "artifactName": "${productName}-${version}-${target}.${ext}",
     "directories": {
@@ -87,8 +87,8 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "artifactName": "${productName}-Setup-${version}.${ext}",
-      "shortcutName": "Print Farm App",
-      "uninstallDisplayName": "Print Farm App",
+      "shortcutName": "MOO3DSTUDIO",
+      "uninstallDisplayName": "MOO3DSTUDIO",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "runAfterFinish": true,

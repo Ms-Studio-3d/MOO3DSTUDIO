@@ -40,7 +40,7 @@ let editingAssetId = null;
 const LIST_PAGE_SIZE = 100;
 
 const DEFAULT_CONFIG = {
-  farmName: '3D Print Farm App',
+  farmName: 'MOO3DSTUDIO',
   currencyName: 'جنيه',
   defaultProfitMargin: 100,
   defaultManualMinutes: 15,
@@ -57,8 +57,8 @@ const DEFAULT_CONFIG = {
   defaultTaxPercent: 0,
   defaultDiscountValue: 0,
   roundingStep: 5,
-  openingCash: 5200,
-  baseMachineHours: 150,
+  openingCash: 0,
+  baseMachineHours: 0,
   maintenanceEveryHours: 1000,
   lastMaintenanceAtHours: 0,
   maintenanceCost: 1500

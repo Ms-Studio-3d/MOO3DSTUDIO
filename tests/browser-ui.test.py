@@ -34,6 +34,17 @@ try:
   mid=page.evaluate('String(dashboardData.materials[0].id)')
   page.locator('#materialUsagePicker').select_option(mid)
   page.locator('.ams-weight').fill('100')
+  second_mid=page.evaluate('String(dashboardData.materials[1].id)')
+  page.locator('#materialUsagePicker').select_option(second_mid)
+  second_row=page.locator(f'.order-material-row[data-id="{second_mid}"]')
+  second_row.locator('.ams-weight').fill('50')
+  assert page.evaluate('currentCalc.materialCost')==120
+  second_row.get_by_role('button', name='حذف الخامة').click()
+  second_row.wait_for(state='detached')
+  assert page.locator('.ams-weight').input_value()=='100'
+  assert page.evaluate('currentCalc.materialCost')==80
+  assert page.evaluate('dashboardData.materials.every(m => m.remaining === 1000)')
+  passed('Removing the second material preserves the first weight and updates the order price without changing stock')
   page.locator('#printHours').blur()
   page.wait_for_timeout(300)
   saved_price=page.evaluate('currentCalc.finalPrice')

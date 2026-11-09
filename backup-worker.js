@@ -23,7 +23,7 @@ async function main() {
   const backupsDir = String(workerData?.backupsDir || '').trim();
   const reason = String(workerData?.reason || 'auto').replace(/[^a-z0-9_-]/gi, '').slice(0, 20) || 'auto';
   if (!dbPath || !backupsDir) throw new Error('Database path and backup directory are required');
-  process.env.MOO3D_DB_PATH = dbPath;
+  process.env.MOO3DSTUDIO_DB_PATH = dbPath;
   const { getDb, exportBackupData } = require('./database');
   const db = getDb({ readonly: true });
   let snapshot;
