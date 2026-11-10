@@ -25,9 +25,10 @@ app.once('browser-window-created', (_event, window) => {
   const contents = window.webContents;
   const execute = (source) => contents.executeJavaScript(source);
   const messages = [];
-  contents.on('console-message', (_event, details) => { if (details.level === 'error') messages.push(details.message); });
+  contents.on('console-message', (details) => { if (details.level === 'error') messages.push(details.message); });
   contents.once('did-fail-load', (_event, _code, description) => { console.error(description); app.exit(1); });
   contents.once('did-finish-load', async () => {
+    let phase = 'first run and IPC';
     try {
       const waitFor = async (condition) => {
         const until = Date.now() + 8000;
@@ -46,15 +47,17 @@ app.once('browser-window-created', (_event, window) => {
       assert.equal(preferences.sandbox, true);
       assert.equal(preferences.contextIsolation, true);
       assert.equal(preferences.devTools, !packagedApp);
+      phase = 'content security policy';
       await execute([
         'window.inlineBlocked = false;',
         'document.addEventListener("securitypolicyviolation", () => { window.inlineBlocked = true; }, { once: true });',
         'const probe = document.createElement("script");',
         'probe.textContent = "window.inlineExecuted = true";',
-        'document.body.appendChild(probe);'
+        'void document.body.appendChild(probe);'
       ].join('\n'));
       await waitFor('window.inlineBlocked');
       assert.equal(await execute('Boolean(window.inlineExecuted)'), false);
+      phase = 'settings and dashboard navigation';
       await execute("document.querySelector('[data-action-click=dismissFirstRunGuide]').click()");
       await waitFor("!document.querySelector('#firstRunGuide')?.open");
       await execute("setValue('profitMargin', '77'); calc(); document.querySelector('[data-view=settings]').click()");
@@ -68,8 +71,10 @@ app.once('browser-window-created', (_event, window) => {
       await waitFor("isModalOpen('businessDashboardModal')");
       await execute("document.querySelector('#businessDashboardModal [data-action-click=closeBusinessDashboard]').click()");
 
+      phase = 'viewport setup';
       contents.debugger.attach('1.3');
       for (const [width, height] of [[1024, 600], [1200, 720], [1366, 768], [1920, 1080]]) {
+        phase = width + 'x' + height + ' viewport';
         await contents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
         await waitFor('innerWidth === ' + width + ' && innerHeight === ' + height);
         const result = await execute([
@@ -100,7 +105,11 @@ app.once('browser-window-created', (_event, window) => {
       console.log('Electron window, isolated SQLite/IPC, CSP, settings, and dashboard return verified' + (packagedApp ? ' using app.asar.' : '.'));
       app.quit();
     } catch (error) {
-      console.error(error);
+      console.error('Electron smoke failed during ' + phase, error);
+      if (process.env.GITHUB_ACTIONS === 'true') {
+        const message = (phase + ': ' + error.message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+        console.log('::error title=Electron window smoke::' + message);
+      }
       app.exit(1);
     }
   });
