@@ -13,6 +13,7 @@ const {
   getNextQuoteCode,
   setConfig,
   createPrinter,
+  createPrinterWithAsset,
   updatePrinter,
   deletePrinter,
   createMaterial,
@@ -750,10 +751,28 @@ function registerIpcHandlers() {
       const data = normalizePrinterPayload(payload);
       validatePrinterPayload(data);
 
-      if (data.id) updatePrinter(data);
-      else createPrinter(data);
+      if (data.id) {
+        updatePrinter(data);
+        return ok();
+      }
+      const purchase = asObject(payload).purchase;
+      if (purchase == null) {
+        createPrinter(data);
+        return ok();
+      }
 
-      return ok();
+      const asset = normalizeAssetPayload({
+        date: new Date().toISOString().slice(0, 10),
+        item: data.name,
+        type: 'طابعة',
+        cost: asObject(purchase).cost,
+        depreciationHours: asObject(purchase).depreciationHours
+      });
+      validateAssetPayload(asset);
+      if (asset.depreciationHours <= 0) throw new Error('اكتب عدد ساعات إهلاك أكبر من صفر.');
+      createPrinterWithAsset(data, asset);
+      scheduleAutomaticBackup('after-printer-asset');
+      return ok({ assetSaved: true });
     },
     'فشل في حفظ الطابعة'
   );

@@ -1019,6 +1019,14 @@ function createPrinter(data) {
   return Number(result.lastInsertRowid);
 }
 
+function createPrinterWithAsset(printer, asset) {
+  return db.transaction(() => {
+    const printerId = createPrinter(printer);
+    saveAsset(asset);
+    return printerId;
+  })();
+}
+
 function updatePrinter(data) {
   db.prepare(`
     UPDATE printers
@@ -2525,6 +2533,7 @@ module.exports = {
   generateUniqueOrderCode,
   setConfig,
   createPrinter,
+  createPrinterWithAsset,
   updatePrinter,
   deletePrinter,
   createMaterial,

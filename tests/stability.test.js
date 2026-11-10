@@ -50,6 +50,39 @@ async function workerBackup(reason) {
     assert.doesNotThrow(() => h.validateBackupPayload(data));
     assert.doesNotThrow(() => h.validateBackupPayload({ ...data, appName: 'Print Farm App' }));
   });
+  await test('saving the first printer with a purchase price records one asset and updates dashboard totals', async () => {
+    const printer = { name: 'First printer', model: 'Test', hourlyDepreciation: 6.5 };
+    const rejected = await h.farmAPI.savePrinter({ ...printer, purchase: { cost: 65000, depreciationHours: 0 } });
+    assert.equal(rejected.success, false);
+    assert.equal(full().printers.length, 0);
+
+    const saved = await h.farmAPI.savePrinter({ ...printer, purchase: { cost: 65000, depreciationHours: 5000 } });
+    assert.equal(saved.success, true, saved.message);
+    assert.equal(saved.data.assetSaved, true);
+    const dashboard = (await h.farmAPI.getDashboardData()).data;
+    assert.equal(dashboard.printers.length, 1);
+    assert.equal(dashboard.printers[0].hourlyDepreciation, 6.5);
+    assert.equal(dashboard.assets.length, 1);
+    assert.equal(dashboard.assets[0].item, printer.name);
+    assert.equal(dashboard.assets[0].type, 'طابعة');
+    assert.equal(dashboard.assets[0].depreciationHours, 5000);
+    assert.equal(dashboard.meta.summary.totalAssets, 65000);
+    const edited = await h.farmAPI.savePrinter({ ...printer, id: dashboard.printers[0].id, status: 'printing' });
+    assert.equal(edited.success, true, edited.message);
+    assert.equal(full().assets.length, 1);
+  });
+  await test('a failed purchase asset insert rolls back the new printer', async () => {
+    const db = h.database.getDb();
+    db.exec("CREATE TEMP TRIGGER test_block_asset BEFORE INSERT ON assets BEGIN SELECT RAISE(ABORT, 'test asset error'); END");
+    try {
+      const result = await h.farmAPI.savePrinter({ name: 'Uncommitted printer', purchase: { cost: 50000, depreciationHours: 5000 } });
+      assert.equal(result.success, false);
+      assert.equal(full().printers.length, 1);
+      assert.equal(full().assets.length, 1);
+    } finally {
+      db.exec('DROP TRIGGER test_block_asset');
+    }
+  });
   fresh('sales');
   const order = sampleOrder(h.database), materialId = order.materialUsage[0].materialId;
   await test('preload → main → SQLite sale consumes 100g exactly once', async () => {

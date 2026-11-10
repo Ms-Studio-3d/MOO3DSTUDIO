@@ -16,6 +16,9 @@ function openPrinterModal() {
   setValue('printerModel', '');
   setValue('printerStatus', 'idle');
   setValue('printerHourlyDepreciation', '0');
+  setValue('printerPurchasePrice', '');
+  setValue('printerPurchaseHours', '5000');
+  $('printerPurchaseFields').hidden = false;
   setValue('printerNotes', '');
   openModal('printerModal');
 }
@@ -37,12 +40,16 @@ function editPrinter(id) {
   setValue('printerModel', printer.model || '');
   setValue('printerStatus', printer.status || 'idle');
   setValue('printerHourlyDepreciation', printer.hourlyDepreciation || 0);
+  $('printerPurchaseFields').hidden = true;
   setValue('printerNotes', printer.notes || '');
 
   openModal('printerModal');
 }
 
 async function savePrinterAction() {
+  const saveButton = $('savePrinterButton');
+  if (saveButton.disabled) return;
+
   const name = getTrimmedValue('printerName');
 
   if (!name) {
@@ -60,18 +67,41 @@ async function savePrinterAction() {
     notes: getTrimmedValue('printerNotes')
   };
 
-  const response = await window.farmAPI.savePrinter(payload);
-
-  if (!response?.success) {
-    showToast(response?.message || 'فشل في حفظ الطابعة', 'error');
-    return;
+  const priceInput = getTrimmedValue('printerPurchasePrice');
+  if (!payload.id && priceInput) {
+    const normalizedPrice = /^[0-9٠-٩]{1,3}(?:,[0-9٠-٩]{3})+(?:[.٫][0-9٠-٩]+)?$/.test(priceInput)
+      ? priceInput.replace(/,/g, '')
+      : priceInput;
+    const cost = toPositiveNumber(normalizedPrice, 0);
+    const depreciationHours = toPositiveNumber(getValue('printerPurchaseHours'), 0);
+    if (cost <= 0) {
+      showToast('اكتب سعر شراء أكبر من صفر.', 'error');
+      $('printerPurchasePrice').focus();
+      return;
+    }
+    if (depreciationHours <= 0) {
+      showToast('اكتب عدد ساعات إهلاك أكبر من صفر.', 'error');
+      $('printerPurchaseHours').focus();
+      return;
+    }
+    payload.purchase = { cost, depreciationHours };
   }
 
-  showToast('تم حفظ الطابعة بنجاح');
-  closePrinterModal();
-  await loadDashboardData();
+  saveButton.disabled = true;
+  try {
+    const response = await window.farmAPI.savePrinter(payload);
 
-  if (isModalOpen('printersManagerModal')) renderPrinters();
+    if (!response?.success) {
+      showToast(response?.message || 'فشل في حفظ الطابعة', 'error');
+      return;
+    }
+
+    showToast(response.data?.assetSaved ? 'تم حفظ الطابعة وسعر شرائها في الأصول' : 'تم حفظ الطابعة بنجاح');
+    closePrinterModal();
+    await loadDashboardData();
+  } finally {
+    saveButton.disabled = false;
+  }
 }
 
 async function deletePrinterAction(id) {

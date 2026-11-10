@@ -863,12 +863,26 @@
         </div>
       </div>
 
+      <div id="printerPurchaseFields" class="section-gap-sm">
+        <div class="grid-2">
+          <div class="form-group">
+            <label for="printerPurchasePrice">سعر شراء الطابعة (اختياري)</label>
+            <input type="text" id="printerPurchasePrice" inputmode="decimal" placeholder="مثال 65000" />
+          </div>
+          <div class="form-group">
+            <label for="printerPurchaseHours">ساعات إهلاك الطابعة</label>
+            <input type="text" id="printerPurchaseHours" inputmode="decimal" />
+          </div>
+        </div>
+        <p class="section-subtext">لو كتبت سعر الشراء، هيتسجل أصل للطابعة مع الحفظ. تقدر تعدّل السعر بعدين من شاشة «الأصول».</p>
+      </div>
+
       <div class="form-group section-gap-sm">
         <label for="printerNotes">ملاحظات</label>
         <textarea id="printerNotes"></textarea>
       </div>
 
-      <button type="button" class="btn btn-primary section-gap-sm" onclick="savePrinterAction()">حفظ الطابعة</button>
+      <button type="button" id="savePrinterButton" class="btn btn-primary section-gap-sm" onclick="savePrinterAction()">حفظ الطابعة</button>
     </div>
   </div>
 
@@ -1042,8 +1056,8 @@
     <h2 id="firstRunTitle">أهلًا بك في MOO3D Farm</h2>
     <p id="firstRunIntro">قبل أول أوردر، سجّل طابعتك وتكلفة شرائها والخامة اللي هتطبع بيها، عشان البرنامج يحسب التكلفة ويخصم الخامة من المخزون.</p>
     <ol class="first-run-steps">
-      <li><strong>الطابعات</strong> — أضف اسم الطابعة وتكلفة تشغيل الساعة لو تعرفها.</li>
-      <li><strong>الأصول</strong> — سجّل الطابعة بسعر شرائها وساعات الإهلاك، عشان تكلفة استخدامها تتحسب مع الأوردرات.</li>
+      <li><strong>الطابعات</strong> — سجّل الاسم وسعر الشراء وساعات الإهلاك. لو تعرف تكلفة تشغيل الساعة، اكتبها في خانتها.</li>
+      <li><strong>الأصول</strong> — سعر الشراء اللي حفظته مع الطابعة هيظهر هنا وفي الداشبورد، وساعات الإهلاك بتدخل في حساب تكلفة الأوردر.</li>
       <li><strong>المشتريات</strong> — اختار «خامات» و«إضافة خامة جديدة باسم البند». اكتب اسمها ولونها، وعدد البكرات ووزن البكرة والمبلغ اللي دفعته. الخامة هتظهر في المخزون.</li>
     </ol>
     <div class="helper-box first-run-tracking">
