@@ -79,6 +79,7 @@
                 <div class="form-group">
                   <label for="profitMargin">نسبة المكسب على التكلفة %</label>
                   <input type="text" id="profitMargin" value="100" inputmode="decimal" />
+                  <small class="muted">تكلفة 100 + زيادة 50% = 150 جنيه قبل الخصم والإضافات.</small>
                 </div>
 
                 <div class="form-group">
@@ -511,6 +512,7 @@
         <h2>المبيعات والتقارير</h2>
         <div class="inline-actions">
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportSalesCSV()">مبيعات CSV</button>
+          <button type="button" class="btn btn-secondary btn-auto" onclick="copyOrdersForTracking()">نسخ لشيت المتابعة</button>
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportStockCSV()">مخزون CSV</button>
         </div>
       </div>
@@ -612,7 +614,7 @@
   </div>
 
   <div class="modal app-panel" id="editModal" aria-hidden="true">
-    <div class="modal-content modal-lg panel-content">
+    <div class="modal-content modal-lg panel-content" oninput="updateEditCostPreview()" onchange="updateEditCostPreview()">
       <div class="panel-head">
         <button type="button" onclick="closeModal('editModal')" class="btn btn-secondary btn-auto">رجوع</button>
         <h2>تعديل الأوردر</h2>
@@ -672,9 +674,17 @@
         </div>
       </div>
 
+      <section class="section-gap-sm" aria-labelledby="editMaterialsTitle">
+        <h3 id="editMaterialsTitle">خامات الأوردر</h3>
+        <div class="materials-picker-bar">
+          <select id="editMaterialPicker" aria-label="خامة من المخزن"></select>
+          <button id="editAddMaterial" type="button" class="btn btn-secondary btn-auto" onclick="addEditMaterial()">إضافة خامة</button>
+        </div>
+        <div id="editMaterialRows" class="material-usage-rows"></div>
+      </section>
       <div class="helper-box section-gap-sm">
-        <strong>تنبيه:</strong>
-        <span>تعديل وقت الطباعة أو الشغل اليدوي يعيد حساب التكلفة والربح. استهلاك الخامات لا يتغير من هنا؛ لو عايز تعديل خامات الأوردر، احذف الأوردر وسجله من جديد.</span>
+        <span id="editCostPreview" aria-live="polite"></span>
+        <span>عند الحفظ يتحدّث المخزون والتكلفة. سعر البيع هو الرقم المسجّل في خانة سعر البيع النهائي.</span>
       </div>
 
       <button type="button" class="btn btn-primary section-gap-sm" onclick="saveEditSale()">حفظ التعديل</button>
@@ -865,7 +875,7 @@
     <div class="modal-content panel-content settings-panel">
       <div class="panel-head">
         <button type="button" onclick="closeSettingsModal()" class="btn btn-secondary btn-auto">رجوع</button>
-        <h2>الإعدادات — <bdi>0.0.1</bdi></h2>
+        <h2>الإعدادات — <bdi>0.0.2</bdi></h2>
       </div>
 
       <div class="settings-fields">

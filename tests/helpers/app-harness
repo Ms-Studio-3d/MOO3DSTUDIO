@@ -27,6 +27,7 @@ function createAppHarness(directory, { withSampleMaterials = true } = {}) {
       disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true, whenReady: () => ({ then() {} }), on() {}, quit() {} },
     BrowserWindow: Object.assign(function () {}, { getAllWindows: () => [] }),
     shell: { openExternal: async () => {}, openPath: async () => '' },
+    clipboard: { writeText: (text) => { harness.clipboardText = text; } },
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     dialog: { showErrorBox() {}, showMessageBox: async (...args) => {
       const options = args.at(-1);

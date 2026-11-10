@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { Worker } = require('worker_threads');
@@ -6,6 +6,7 @@ const {
   getDb,
   getDashboardData,
   getDataPage,
+  getOrderMaterials,
   getDatabasePath,
   getNextOrderCode,
   getNextQuoteCode,
@@ -70,6 +71,8 @@ process.on('unhandledRejection', (error) => {
 const CHANNELS = {
   getDashboardData: 'db:getDashboardData',
   getDataPage: 'db:getDataPage',
+  getOrderMaterials: 'db:getOrderMaterials',
+  copyTrackingRows: 'clipboard:copyTrackingRows',
   getNextOrderCode: 'db:getNextOrderCode',
   getNextQuoteCode: 'db:getNextQuoteCode',
   saveConfig: 'db:saveConfig',
@@ -269,6 +272,7 @@ function normalizeMaterialUsageItem(item) {
 
   return {
     materialId: asNullableId(data.materialId),
+    preserveRowId: asNullableId(data.preserveRowId),
     materialName: asTrimmedString(data.materialName),
     grams: asPositiveNumber(data.grams, 0),
     pricePerGram: asPositiveNumber(data.pricePerGram, 0),
@@ -319,6 +323,9 @@ function normalizeOrderPayload(payload) {
     replaceMaterialUsage: data.replaceMaterialUsage === undefined
       ? Array.isArray(data.materialUsage)
       : data.replaceMaterialUsage === true,
+    expectedMaterialRowIds: Array.isArray(data.expectedMaterialRowIds)
+      ? data.expectedMaterialRowIds.map((id) => asNullableId(id))
+      : undefined,
     materialUsage: Array.isArray(data.materialUsage)
       ? data.materialUsage.map(normalizeMaterialUsageItem)
       : []
@@ -415,12 +422,15 @@ function validateUpdateOrderPayload(data) {
     }
 
     for (const item of data.materialUsage) {
-      if (!item || !item.materialId) throw new Error('بيانات الخامة غير صالحة');
+      if (!item || (!item.materialId && !item.preserveRowId)) throw new Error('بيانات الخامة غير صالحة');
       if (asPositiveNumber(item.grams, 0) <= 0) throw new Error('كمية الخامة لازم تكون أكبر من صفر');
     }
   }
 
-  if (data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost) throw new Error('سعر البيع أقل من التكلفة والمصاريف المباشرة');
+  if (data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost
+    && !(data.replaceMaterialUsage && data.expectedMaterialRowIds)) {
+    throw new Error('سعر البيع أقل من التكلفة والمصاريف المباشرة');
+  }
 }
 
 function validateCreateQuotePayload(data) {
@@ -696,6 +706,14 @@ function registerIpcHandlers() {
     'فشل في تحميل صفحة البيانات'
   );
   handleIpc(CHANNELS.getNextOrderCode, async () => ok(getNextOrderCode()), 'فشل في إنشاء كود الأوردر');
+  handleIpc(CHANNELS.getOrderMaterials, async (code) => ok(getOrderMaterials(asTrimmedString(code))), 'فشل في تحميل خامات الأوردر');
+  handleIpc(CHANNELS.copyTrackingRows, async (text) => {
+    if (typeof text !== 'string' || !text || text.length > 1024 * 1024) {
+      throw new Error('بيانات النسخ غير صالحة');
+    }
+    clipboard.writeText(text);
+    return ok();
+  }, 'فشل في نسخ بيانات الشيت');
   handleIpc(CHANNELS.getNextQuoteCode, async () => ok(getNextQuoteCode()), 'فشل في إنشاء كود عرض السعر');
 
   handleIpc(

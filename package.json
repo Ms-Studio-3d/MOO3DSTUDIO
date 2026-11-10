@@ -1,6 +1,6 @@
 {
   "name": "moo3dstudio",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "productName": "MOO3D Farm",
   "description": "MOO3D Farm desktop app for 3D printing pricing, orders, and inventory",
   "main": "main.js",

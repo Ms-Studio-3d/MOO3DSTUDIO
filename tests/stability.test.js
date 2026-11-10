@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { Worker } = require('node:worker_threads');
 const { createAppHarness, sampleOrder } = require('./helpers/app-harness');
 const { normalizeResetOptions } = require('../reset-options');
@@ -264,6 +265,55 @@ async function workerBackup(reason) {
     const code = full().orders[0].code;
     await h.farmAPI.deleteOrder(code);
     assert.equal(full().quotes[0].status, 'open');
+  });
+  await test('editing saved materials updates stock once and rejects stale or excessive changes', async () => {
+    fresh('edit-materials');
+    const sale = sampleOrder(h.database);
+    const material = sale.materialUsage[0];
+    assert.equal((await h.farmAPI.createOrder(sale)).success, true);
+    const { data: before } = await h.farmAPI.getOrderMaterials(sale.code);
+    assert.equal(before[0].grams, 100);
+    const edited = {
+      ...sale,
+      replaceMaterialUsage: true,
+      expectedMaterialRowIds: [before[0].rowId],
+      materialUsage: [{ ...material, grams: 95, totalCost: 76 }],
+      materialCost: 76,
+      totalCost: 154,
+      profit: 166
+    };
+    const result = await h.farmAPI.updateOrder(edited);
+    assert.equal(result.success, true, result.message);
+    assert.equal(stock(material.materialId), 905);
+    assert.equal(getOrder(sale.code).finalPrice, sale.finalPrice);
+    assert.equal(getOrder(sale.code).profit, 166);
+    assert.equal(getOrder(sale.code).paidAmount, sale.finalPrice);
+    assert.equal((await h.farmAPI.updateOrder(edited)).success, false);
+    const { data: after } = await h.farmAPI.getOrderMaterials(sale.code);
+    const excessive = {
+      ...edited,
+      expectedMaterialRowIds: [after[0].rowId],
+      materialUsage: [{ ...material, grams: 1001 }]
+    };
+    assert.equal((await h.farmAPI.updateOrder(excessive)).success, false);
+    assert.equal(stock(material.materialId), 905);
+    assert.equal((await h.farmAPI.getOrderMaterials(sale.code)).data[0].grams, 95);
+  });
+  await test('Excel clipboard uses full cost, retains cents, and excludes cancelled orders', async () => {
+    fresh('tracking-clipboard');
+    const active = sampleOrder(h.database, {
+      itemName: '=1+2', customerName: 'عميل\tاختبار', totalCost: 158.4, accessoriesCost: 5.25, shippingCost: 10
+    });
+    const cancelled = sampleOrder(h.database, { code: 'ORD-1002', status: 'cancelled' });
+    assert.equal((await h.farmAPI.createOrder(active)).success, true);
+    assert.equal((await h.farmAPI.createOrder(cancelled)).success, true);
+    const renderer = vm.createContext({ document: {}, window: { farmAPI: h.farmAPI } });
+    for (const file of ['utils.js', 'settings-export.js']) {
+      vm.runInContext(fs.readFileSync(path.join(__dirname, '../js', file), 'utf8'), renderer);
+    }
+    vm.runInContext('showToast = () => {};', renderer);
+    await vm.runInContext('copyOrdersForTracking()', renderer);
+    assert.equal(h.clipboardText, [active.code, active.date, "'=1+2", 'عميل اختبار', '320.00', '173.65', '320.00'].join('\t'));
   });
   console.log(`\n${passed} stability scenarios passed through actual preload/main/SQLite, with native OS dialogs mocked.`);
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {

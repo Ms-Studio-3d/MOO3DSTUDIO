@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 const CHANNELS = {
   getDashboardData: 'db:getDashboardData',
   getDataPage: 'db:getDataPage',
+  getOrderMaterials: 'db:getOrderMaterials',
+  copyTrackingRows: 'clipboard:copyTrackingRows',
   getNextOrderCode: 'db:getNextOrderCode',
   getNextQuoteCode: 'db:getNextQuoteCode',
   saveConfig: 'db:saveConfig',
@@ -52,6 +54,14 @@ contextBridge.exposeInMainWorld('farmAPI', {
 
   getDataPage(kind, options = {}) {
     return safeInvoke(CHANNELS.getDataPage, { kind, ...(options || {}) });
+  },
+
+  getOrderMaterials(code) {
+    return safeInvoke(CHANNELS.getOrderMaterials, code);
+  },
+
+  copyTrackingRows(text) {
+    return safeInvoke(CHANNELS.copyTrackingRows, text);
   },
 
   getNextOrderCode() {

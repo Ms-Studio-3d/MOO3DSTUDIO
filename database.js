@@ -713,6 +713,17 @@ function getOrdersPage(options = {}) {
   return { items, summary: getOrdersSummary(whereSql, params), ...buildPageMeta(total, limit, offset, includeAll) };
 }
 
+function getOrderMaterials(code) {
+  return db.prepare(`
+    SELECT om.id AS rowId, om.material_id AS materialId, om.material_name AS materialName,
+      om.grams, om.price_per_gram AS pricePerGram, om.total_cost AS totalCost
+    FROM order_materials om
+    JOIN orders o ON o.id = om.order_id
+    WHERE o.code = ?
+    ORDER BY om.id
+  `).all(code);
+}
+
 function getStockMovementsPage(options = {}) {
   const { includeAll, limit, offset } = normalizePageOptions(options);
   const total = Number(db.prepare('SELECT COUNT(*) AS count FROM stock_movements').get().count || 0);
@@ -1599,7 +1610,11 @@ function updateOrder(payload) {
   }
 
   const transaction = db.transaction((data) => {
-    const existingOrder = db.prepare('SELECT id, code, printer_id AS printerId FROM orders WHERE code = ?').get(code);
+    const existingOrder = db.prepare(`
+      SELECT id, code, printer_id AS printerId, final_price AS finalPrice,
+        payment_status AS paymentStatus, payment_method AS paymentMethod, paid_amount AS paidAmount
+      FROM orders WHERE code = ?
+    `).get(code);
 
     if (!existingOrder) {
       throw new Error('الأوردر غير موجود');
@@ -1644,13 +1659,23 @@ function updateOrder(payload) {
         throw new Error('لا يوجد استهلاك خامات في الأوردر');
       }
 
-      const oldMaterials = db.prepare(`
-        SELECT material_id AS materialId, material_name AS materialName, grams
-        FROM order_materials
-        WHERE order_id = ?
-      `).all(existingOrder.id);
+      const oldMaterials = getOrderMaterials(code);
+      if (Array.isArray(data.expectedMaterialRowIds)
+        && (oldMaterials.length !== data.expectedMaterialRowIds.length
+          || oldMaterials.some((item, index) => item.rowId !== data.expectedMaterialRowIds[index]))) {
+        throw new Error('خامات الأوردر اتعدّلت. افتح الأوردر من جديد قبل الحفظ.');
+      }
+
+      const oldGrams = new Map();
+      const unlinkedRows = new Map();
+      for (const item of oldMaterials) {
+        if (item.materialId) oldGrams.set(item.materialId, (oldGrams.get(item.materialId) || 0) + item.grams);
+        else unlinkedRows.set(item.rowId, item);
+      }
+      const keptUnlinkedRows = new Set(data.materialUsage.map((item) => item.preserveRowId).filter(Boolean));
 
       for (const item of oldMaterials) {
+        if (!item.materialId && keptUnlinkedRows.has(item.rowId)) continue;
         if (item.materialId) {
           db.prepare(`
             UPDATE materials
@@ -1682,6 +1707,16 @@ function updateOrder(payload) {
       db.prepare('DELETE FROM order_materials WHERE order_id = ?').run(existingOrder.id);
 
       for (const item of data.materialUsage) {
+        if (item.preserveRowId) {
+          const old = unlinkedRows.get(item.preserveRowId);
+          if (!old) throw new Error('خامة قديمة غير موجودة في هذا الأوردر');
+          unlinkedRows.delete(item.preserveRowId);
+          db.prepare(`
+            INSERT INTO order_materials (order_id, material_id, material_name, grams, price_per_gram, total_cost)
+            VALUES (?, NULL, ?, ?, ?, ?)
+          `).run(existingOrder.id, old.materialName, old.grams, old.pricePerGram, old.totalCost);
+          continue;
+        }
         if (Number(item.grams || 0) <= 0) {
           throw new Error('كمية الخامة لازم تكون أكبر من صفر');
         }
@@ -1692,8 +1727,11 @@ function updateOrder(payload) {
           throw new Error(`الخامة غير موجودة: ${item.materialName}`);
         }
 
-        if (Number(material.is_archived || 0) === 1) {
-          throw new Error(`الخامة مؤرشفة ولا يمكن استخدامها: ${item.materialName}`);
+        const isArchived = Number(material.is_archived || 0) === 1;
+        if (isArchived) {
+          const remainingOldGrams = (oldGrams.get(material.id) || 0) - Number(item.grams);
+          if (remainingOldGrams < 0) throw new Error(`لا يمكن زيادة استهلاك خامة مؤرشفة: ${item.materialName}`);
+          oldGrams.set(material.id, remainingOldGrams);
         }
 
         if (Number(material.remaining || 0) < Number(item.grams || 0)) {
@@ -1703,11 +1741,12 @@ function updateOrder(payload) {
         const result = db.prepare(`
           UPDATE materials
           SET remaining = remaining - ?
-          WHERE id = ? AND remaining >= ? AND is_archived = 0
+          WHERE id = ? AND remaining >= ? AND is_archived = ?
         `).run(
           Number(item.grams || 0),
           Number(item.materialId),
-          Number(item.grams || 0)
+          Number(item.grams || 0),
+          isArchived ? 1 : 0
         );
 
         if (result.changes === 0) {
@@ -1770,6 +1809,11 @@ function updateOrder(payload) {
 
     const finalPrice = Number(data.finalPrice || 0);
     const quantity = requestedQuantity;
+    const keepRecordedPrice = finalPrice === existingOrder.finalPrice;
+    if (data.replaceMaterialUsage === true && data.expectedMaterialRowIds
+      && !keepRecordedPrice && finalPrice < Number(data.totalCost || 0) + Number(data.accessoriesCost || 0) + Number(data.shippingCost || 0)) {
+      throw new Error('سعر البيع المعدّل أقل من التكلفة والمصاريف المباشرة');
+    }
 
     db.prepare(`
       UPDATE orders
@@ -1841,9 +1885,9 @@ function updateOrder(payload) {
       Number(data.unitFinalPrice || (finalPrice / quantity)),
       Number(data.unitTotalCost || (Number(data.totalCost || 0) / quantity)),
       Number(data.unitProfit || (Number(data.profit || 0) / quantity)),
-      'collected',
-      'cash',
-      finalPrice,
+      keepRecordedPrice ? existingOrder.paymentStatus : 'collected',
+      keepRecordedPrice ? existingOrder.paymentMethod : 'cash',
+      keepRecordedPrice ? existingOrder.paidAmount : finalPrice,
       code
     );
   });
@@ -2515,6 +2559,7 @@ module.exports = {
   getDatabasePath,
   getDashboardData,
   getDataPage,
+  getOrderMaterials,
   setDatabasePathForTests,
   getNextOrderCode,
   getNextQuoteCode,

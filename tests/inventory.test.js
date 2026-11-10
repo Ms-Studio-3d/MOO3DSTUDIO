@@ -16,7 +16,7 @@ const createOrderSource = database.slice(database.indexOf('function insertOrderW
 mustInclude(createOrderSource, 'WHERE id = ? AND remaining >= ? AND is_archived = 0', 'atomic stock decrement for create order');
 mustInclude(updateOrderSource, "'return',\n          Number(item.grams || 0),\n          'استرجاع قبل تعديل أوردر'", 'stock return movement before order edit');
 mustInclude(updateOrderSource, "'out',\n          Number(item.grams || 0),\n          'استهلاك بعد تعديل أوردر'", 'stock out movement after order edit');
-mustInclude(updateOrderSource, 'WHERE id = ? AND remaining >= ? AND is_archived = 0', 'atomic stock decrement for order edit');
+mustInclude(updateOrderSource, 'WHERE id = ? AND remaining >= ? AND is_archived = ?', 'atomic stock decrement for order edit');
 mustInclude(deleteOrderSource, "'return',\n        Number(item.grams || 0),\n        'استرجاع بعد حذف أوردر'", 'stock return movement after order delete');
 mustInclude(updateOrderSource, 'if (Number(item.grams || 0) <= 0)', 'edit order rejects zero material grams');
 mustInclude(createOrderSource, 'if (Number(item.grams || 0) <= 0)', 'create order rejects zero material grams');

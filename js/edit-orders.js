@@ -147,7 +147,8 @@ function recalculateEditedOrderCosts(oldOrder, printHours, manualMinutes, printe
     directAddOnsCost: roundMoney(pricing.directAddOnsCost)
   };
 }
-function openEditSale(code) {
+async function openEditSale(code) {
+  if (savingEdit) return;
   const order = getOrderByCode(code);
 
   if (!order) {
@@ -155,7 +156,16 @@ function openEditSale(code) {
     return;
   }
 
+  const request = ++editMaterialRequest;
+  const response = await window.farmAPI.getOrderMaterials(code);
+  if (request !== editMaterialRequest) return;
+  if (!response?.success || !Array.isArray(response.data)) {
+    showToast(response?.message || 'تعذر تحميل خامات الأوردر', 'error');
+    return;
+  }
   editingOrderCode = code;
+  originalEditMaterials = response.data;
+  editMaterials = originalEditMaterials.map((item) => ({ ...item }));
 
   setValue('editCode', order.code || '');
   setValue('editDate', order.date || '');
@@ -177,10 +187,144 @@ function openEditSale(code) {
   setValue('editManualMinutes', order.manualMinutes || 0);
   setValue('editFinalPrice', order.finalPrice || 0);
   setValue('editNotes', order.notes || '');
+  renderEditMaterials();
+  updateEditCostPreview();
 
   openModal('editModal');
 }
 
+let editMaterialRequest = 0;
+let originalEditMaterials = [];
+let editMaterials = [];
+
+function renderEditMaterials() {
+  const picker = $('editMaterialPicker');
+  const available = (dashboardData.materials || []).filter((material) => !editMaterials.some((row) => row.materialId === material.id));
+  picker.innerHTML = '<option value="">اختار خامة من المخزن...</option>' + available.map((material) => (
+    `<option value="${Number(material.id)}">${escapeHtml(material.name)} — ${escapeHtml(material.color || '')} — ${formatNumber(material.remaining)} جم</option>`
+  )).join('');
+  picker.disabled = available.length === 0;
+  $('editAddMaterial').disabled = available.length === 0;
+  $('editMaterialRows').innerHTML = editMaterials.map((row, index) => {
+    const material = getMaterialById(row.materialId);
+    const detail = material?.color || (row.materialId ? 'خامة مسجّلة في الأوردر' : 'خامة قديمة غير مرتبطة بالمخزون');
+    return `
+      <div class="material-row order-material-row">
+        <div class="material-row-name">
+          <span class="material-row-title">${escapeHtml(row.materialName)}</span>
+          <span class="material-row-meta">${escapeHtml(detail)}</span>
+        </div>
+        <input type="text" inputmode="decimal" value="${escapeHtml(row.grams)}" ${row.materialId ? '' : 'readonly'}
+          aria-label="جرامات ${escapeHtml(row.materialName)}" oninput="editMaterials[${index}].grams = this.value" />
+        <span class="material-used-chip">جرام</span>
+        <button class="material-remove-btn" type="button" aria-label="حذف ${escapeHtml(row.materialName)}"
+          onclick="removeEditMaterial(${index})">×</button>
+      </div>`;
+  }).join('') || '<div class="empty-state">أضف خامة واحدة على الأقل.</div>';
+}
+
+function addEditMaterial() {
+  const material = getMaterialById(getValue('editMaterialPicker'));
+  if (!material || editMaterials.some((row) => row.materialId === material.id)) return;
+  const previous = originalEditMaterials.find((row) => row.materialId === material.id);
+  editMaterials.push(previous ? { ...previous } : {
+    materialId: material.id,
+    materialName: material.name,
+    grams: '',
+    pricePerGram: Number(material.weight) > 0 ? Number(material.price || 0) / Number(material.weight) : 0
+  });
+  renderEditMaterials();
+  updateEditCostPreview();
+  $('editMaterialRows').querySelector('.material-row:last-child input')?.focus();
+}
+
+function removeEditMaterial(index) {
+  editMaterials.splice(index, 1);
+  renderEditMaterials();
+  updateEditCostPreview();
+}
+
+function getEditedMaterialUsage() {
+  const usage = [];
+  for (const row of editMaterials) {
+    const rawGrams = toPositiveNumber(row.grams, 0);
+    const grams = roundMoney(rawGrams);
+    if (grams <= 0) return null;
+    const previous = originalEditMaterials.find((item) => item.rowId === row.rowId);
+    usage.push({
+      ...row,
+      grams,
+      preserveRowId: row.materialId ? null : row.rowId,
+      pricePerGram: Number(Number(row.pricePerGram || 0).toFixed(6)),
+      totalCost: previous && rawGrams === previous.grams
+        ? previous.totalCost
+        : roundMoney(rawGrams * Number(row.pricePerGram || 0))
+    });
+  }
+  return usage.length ? usage : null;
+}
+
+function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
+  const usage = getEditedMaterialUsage();
+  const sameMaterials = usage?.length === originalEditMaterials.length
+    && usage.every((row) => originalEditMaterials.some((old) => (
+      old.rowId === row.rowId && old.grams === row.grams && old.totalCost === row.totalCost
+    )));
+  const sameTime = Number(printerId) === Number(oldOrder.printerId)
+    && Math.abs(printHours - Number(oldOrder.printHours || 0)) < 0.0001
+    && manualMinutes === Number(oldOrder.manualMinutes || 0);
+  const baseline = sameTime ? {
+    ...oldOrder,
+    quantity: Math.max(1, Number(oldOrder.quantity || 1)),
+    directAddOnsCost: Number(oldOrder.accessoriesCost || 0) + Number(oldOrder.shippingCost || 0)
+  } : recalculateEditedOrderCosts(oldOrder, printHours, manualMinutes, printerId);
+
+  if (!usage || sameMaterials) return { usage, sameMaterials, sameTime, costs: baseline };
+  const materialCost = usage.reduce((sum, row) => sum + row.totalCost, 0);
+  const grams = usage.reduce((sum, row) => sum + row.grams, 0);
+  const wasteCost = Number(oldOrder.wasteWeight || 0) * materialCost / grams;
+  const oldSubtotal = ['materialCost', 'wasteCost', 'depreciationCost', 'electricityCost', 'laborCost', 'packagingCost']
+    .reduce((sum, field) => sum + Number(oldOrder[field] || 0), 0);
+  const oldRiskCost = Number(oldOrder.riskCost || 0);
+  const pricing = calculateMoo3dPricing({
+    ...baseline,
+    materialCost,
+    wasteCost,
+    accessoriesCost: Number(oldOrder.accessoriesCost || 0) / baseline.quantity,
+    failurePercent: inferPercent(oldRiskCost, oldSubtotal, getConfigNumber('failurePercent')),
+    taxPercent: inferPercent(oldOrder.taxCost, oldSubtotal + oldRiskCost, getConfigNumber('defaultTaxPercent'))
+  });
+  return {
+    usage,
+    sameMaterials,
+    sameTime,
+    costs: {
+      ...baseline,
+      materialCost: roundMoney(pricing.materialCost),
+      wasteCost: roundMoney(pricing.wasteCost),
+      riskCost: roundMoney(pricing.riskCost),
+      taxCost: roundMoney(pricing.taxCost),
+      totalCost: roundMoney(pricing.totalCost)
+    }
+  };
+}
+
+function updateEditCostPreview() {
+  const order = getOrderByCode(editingOrderCode);
+  if (!order) return;
+  const { usage, costs } = getEditCostState(
+    order,
+    getPrintHoursFromInputs('edit'),
+    toPositiveNumber(getValue('editManualMinutes'), Number(order.manualMinutes || 0)),
+    Number(getValue('editPrinter'))
+  );
+  if (!usage) {
+    setText('editCostPreview', 'أدخل وزنًا أكبر من صفر لكل خامة.');
+    return;
+  }
+  const price = toPositiveNumber(getValue('editFinalPrice'), Number(order.finalPrice || 0));
+  setText('editCostPreview', `إجمالي التكلفة: ${formatMoney(costs.totalCost)} · صافي الربح: ${formatMoney(price - costs.totalCost - costs.directAddOnsCost)}`);
+}
 
 async function saveEditSale() {
   if (savingEdit || !editingOrderCode) return;
@@ -238,23 +382,18 @@ async function saveEditSale() {
       return;
     }
 
-    // A customer/name/date edit must not reprice an old sale with today's settings.
-    const unchangedCostInputs = Number(printerId) === Number(oldOrder.printerId)
-      && Math.abs(printHours - Number(oldOrder.printHours || 0)) < 0.0001
-      && manualMinutes === Number(oldOrder.manualMinutes || 0);
-    const recalculated = unchangedCostInputs
-      ? {
-          ...oldOrder,
-          quantity: Math.max(1, Number(oldOrder.quantity || 1)),
-          directAddOnsCost: Number(oldOrder.accessoriesCost || 0) + Number(oldOrder.shippingCost || 0)
-        }
-      : recalculateEditedOrderCosts(oldOrder, printHours, manualMinutes, printerId);
+    const { usage, sameMaterials, sameTime, costs: recalculated } = getEditCostState(oldOrder, printHours, manualMinutes, printerId);
+    if (!usage) {
+      showToast('أدخل وزنًا أكبر من صفر لكل خامة في الأوردر', 'error');
+      return;
+    }
+    const unchangedCostInputs = sameMaterials && sameTime;
 
     const minimumNoLossPrice =
       recalculated.totalCost +
       recalculated.directAddOnsCost;
 
-    if (finalPrice < minimumNoLossPrice) {
+    if (finalPrice < minimumNoLossPrice && (sameMaterials || finalPrice !== Number(oldOrder.finalPrice || 0))) {
       showToast(
         `سعر البيع أقل من التكلفة الجديدة: الحد الأدنى ${formatMoney(minimumNoLossPrice)}`,
         'error'
@@ -309,10 +448,17 @@ async function saveEditSale() {
   unitTotalCost: roundMoney(recalculated.totalCost / quantity),
   unitProfit: roundMoney(profit / quantity),
 
-  // أضف دول
-  replaceMaterialUsage: false,
-  materialUsage: oldOrder.materialUsage || []
+  replaceMaterialUsage: !sameMaterials,
+  expectedMaterialRowIds: originalEditMaterials.map((item) => item.rowId),
+  materialUsage: usage
 };
+
+    if (sameTime && finalPrice === Number(oldOrder.finalPrice || 0)) {
+      payload.priceBeforeDiscount = oldOrder.priceBeforeDiscount;
+      payload.discountValue = oldOrder.discountValue;
+      payload.priceAfterDiscount = oldOrder.priceAfterDiscount;
+      payload.roundedAdjustment = oldOrder.roundedAdjustment;
+    }
 
     if (unchangedCostInputs && finalPrice === Number(oldOrder.finalPrice || 0)) {
       // Preserve historical discounts, rounding, rates and financial breakdown.

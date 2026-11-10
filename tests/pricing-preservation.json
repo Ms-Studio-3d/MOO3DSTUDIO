@@ -13,7 +13,7 @@
     },
     {
       "file": "js/edit-orders.js",
-      "stopBefore": "function openEditSale(code)",
+      "stopBefore": "async function openEditSale(code)",
       "sha256": "2df8272ed8bf2afc73751e239175d673b61a55178744714a3c249c5dd2a23423"
     }
   ]

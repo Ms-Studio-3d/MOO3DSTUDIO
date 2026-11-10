@@ -148,6 +148,38 @@ function exportSalesCSV() {
   downloadTextFile(`sales-${new Date().toISOString().slice(0, 10)}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
 }
 
+async function copyOrdersForTracking() {
+  const response = await window.farmAPI.getDataPage('orders', { includeAll: true });
+  if (!response?.success) {
+    showToast(response?.message || 'تعذر تحميل الأوردرات', 'error');
+    return;
+  }
+  const orders = response.data.items.filter((order) => !isCancelled(order));
+  if (!orders.length || orders.length > 500) {
+    showToast(orders.length ? 'نسخة الشيت تقبل حتى 500 أوردر' : 'لا توجد أوردرات للنسخ', 'error');
+    return;
+  }
+  const excelText = (value) => {
+    const text = String(value ?? '').replace(/[\t\r\n]+/g, ' ').trim();
+    return /^[=+@-]/.test(text) ? "'" + text : text;
+  };
+  const rows = orders.map((order) => [
+    excelText(order.code),
+    String(order.date || '').slice(0, 10),
+    excelText(order.itemName),
+    excelText(order.customerName),
+    formatNumber(order.finalPrice),
+    formatNumber(Number(order.totalCost || 0) + Number(order.accessoriesCost || 0) + Number(order.shippingCost || 0)),
+    formatNumber(getOrderPaidAmount(order))
+  ].join('\t'));
+  const copied = await window.farmAPI.copyTrackingRows(rows.join('\r\n'));
+  if (!copied?.success) {
+    showToast(copied?.message || 'تعذر نسخ الأوردرات', 'error');
+    return;
+  }
+  showToast(`تم نسخ ${orders.length} أوردر. الصق البيانات في A5 في تبويب استيراد البرنامج.`);
+}
+
 function exportStockCSV() {
   const headers = [
     'الخامة',
