@@ -157,4 +157,20 @@ run("removeMaterialUsageRow('2')");
 assert.equal(materialRows.length, 0);
 assert.equal(run('currentCalc.materialCost'), 0);
 
-console.log('UI tests passed, including material removal and repricing');
+run(`
+  getPrintHoursFromInputs = () => 50;
+  dashboardData.printers = [{ id: 1, name: 'Bambu Lab A1', hourlyDepreciation: 6.5 }];
+  dashboardData.assets = [{ printerId: 1, item: 'Bambu Lab A1', type: 'طابعة', cost: 1000000,
+    depreciationHours: 5000, hourlyDepreciationOverride: 13 }];
+  addMaterialUsageRow('1');
+`);
+materialRows[0].input.value = '20';
+run('calc()');
+assert.equal(run('currentCalc.materialCost'), 16);
+assert.equal(run('currentCalc.assetDepreciationCost'), 650);
+run('dashboardData.assets[0].hourlyDepreciationOverride = 0; calc()');
+assert.equal(run('currentCalc.assetDepreciationCost'), 0);
+run('dashboardData.assets[0].hourlyDepreciationOverride = null; calc()');
+assert.equal(run('currentCalc.assetDepreciationCost'), 10000);
+
+console.log('UI tests passed for material removal, repricing and manual hourly depreciation');

@@ -71,6 +71,52 @@ async function workerBackup(reason) {
     assert.equal(edited.success, true, edited.message);
     assert.equal(full().assets.length, 1);
   });
+  await test('editing a printer updates the same asset and preserves the link through backup restore', async () => {
+    const [printer] = full().printers;
+    const [asset] = full().assets;
+    const saved = await h.farmAPI.savePrinter({
+      ...printer, purchase: { assetId: asset.id, cost: 1000000, depreciationHours: 5000, hourlyDepreciationOverride: 13 }
+    });
+    assert.equal(saved.success, true, saved.message);
+    const snapshot = full();
+    assert.equal(snapshot.assets.length, 1);
+    assert.equal(snapshot.assets[0].id, asset.id);
+    assert.equal(snapshot.assets[0].cost, 1000000);
+    assert.equal(snapshot.meta.summary.totalAssets, 1000000);
+    assert.equal(snapshot.printers[0].purchaseHours, 5000);
+    assert.equal(snapshot.printers[0].hourlyDepreciation, 6.5);
+    const restored = await h.farmAPI.importBackup(snapshot);
+    assert.equal(restored.success, true, restored.message);
+    const updated = full();
+    assert.equal(updated.assets[0].printerId, updated.printers[0].id);
+    assert.equal(updated.printers[0].purchaseAssetId, updated.assets[0].id);
+    assert.equal(updated.printers[0].purchaseHourlyDepreciationOverride, 13);
+    const assetEdit = await h.farmAPI.saveAsset({ ...updated.assets[0], notes: 'Edit without specifying a new override', hourlyDepreciationOverride: undefined });
+    assert.equal(assetEdit.success, true, assetEdit.message);
+    assert.equal(full().assets[0].hourlyDepreciationOverride, 13);
+    const automatic = await h.farmAPI.saveAsset({ ...full().assets[0], hourlyDepreciationOverride: null });
+    assert.equal(automatic.success, true, automatic.message);
+    assert.equal(full().assets[0].hourlyDepreciationOverride, null);
+  });
+  await test('adding a purchase price to an existing printer can reuse an already recorded asset', async () => {
+    const fixture = createAppHarness(path.join(temporary, 'existing-printer-asset'), { withSampleMaterials: false });
+    const printer = { name: 'Previously added' };
+    assert.equal((await fixture.farmAPI.savePrinter(printer)).success, true);
+    assert.equal((await fixture.farmAPI.saveAsset({
+      date: '2026-11-05', item: 'Previously recorded purchase', type: 'طابعة', cost: 65000, depreciationHours: 5000
+    })).success, true);
+    const initial = fixture.database.exportBackupData();
+    const [asset] = initial.assets;
+    const result = await fixture.farmAPI.savePrinter({
+      ...printer, id: initial.printers[0].id, purchase: { assetId: asset.id, cost: 65000, depreciationHours: 5000 }
+    });
+    assert.equal(result.success, true, result.message);
+    const current = fixture.database.exportBackupData();
+    assert.equal(current.assets.length, 1);
+    assert.equal(current.assets[0].date, asset.date);
+    assert.equal(current.printers[0].purchaseAssetId, asset.id);
+    h = fixture;
+  });
   await test('a failed purchase asset insert rolls back the new printer', async () => {
     const db = h.database.getDb();
     db.exec("CREATE TEMP TRIGGER test_block_asset BEFORE INSERT ON assets BEGIN SELECT RAISE(ABORT, 'test asset error'); END");

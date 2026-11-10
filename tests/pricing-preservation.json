@@ -8,8 +8,9 @@
     },
     {
       "file": "js/pricing-orders.js",
+      "startAt": "function getMaintenanceCostPerHour()",
       "stopBefore": "async function saveSale()",
-      "sha256": "f5898e6dcd85d54101a66f79f35f444e2be1a56d3cfcb6864cc5ae02eedcf488"
+      "sha256": "9c609cd5ff5336c24bc96c1dc31acd3e62b16aaa45d7f8c5c0829fa703a88d8b"
     },
     {
       "file": "js/edit-orders.js",

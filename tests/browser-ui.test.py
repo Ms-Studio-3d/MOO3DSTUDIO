@@ -113,12 +113,14 @@ try:
   page.wait_for_function('dashboardData.orders.length === 1')
   passed('Actual backup file input restores data through preload/main validation')
   page.locator('button[onclick="openFreshStartModal()"]').click()
-  page.locator('#executeFreshStart').click()
+  assert page.locator('#executeFreshStart').is_disabled()
   assert page.evaluate('dashboardData.orders.length')==1
-  page.locator('#resetConfirmation').fill('بداية جديدة')
+  page.locator('#resetConfirmation').fill('بداية جديده')
+  assert page.locator('#executeFreshStart').is_enabled()
   page.screenshot(path=str(out/'fresh-start.png'),full_page=True)
   page.locator('#executeFreshStart').click()
-  confirmation.get_by_role('button', name='حفظ نسخة أمان ثم المسح', exact=True).click()
+  assert page.evaluate('dashboardData.orders.length')==1
+  confirmation.get_by_role('button', name='تأكيد التصفير', exact=True).click()
   page.wait_for_function("document.getElementById('resetResult').textContent.includes('تمت البداية الجديدة.') && !freshStartRunning")
   assert page.evaluate('dashboardData.materials.length')==0
   assert page.evaluate('dashboardData.orders.length')==0

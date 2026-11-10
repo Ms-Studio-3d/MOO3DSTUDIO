@@ -460,6 +460,10 @@
         <div class="form-group"><label for="assetDepreciationHours">ساعات الإهلاك</label><input type="text" id="assetDepreciationHours" value="5000" inputmode="decimal" /></div>
         <div class="form-group"><label for="assetNotes">ملاحظات</label><input type="text" id="assetNotes" /></div>
       </div>
+      <div class="form-group section-gap-sm">
+        <label for="assetDepreciationOverride">إهلاك الساعة يدويًا (اختياري)</label>
+        <input type="text" id="assetDepreciationOverride" inputmode="decimal" placeholder="سيبها فاضية للحساب التلقائي" />
+      </div>
       <button type="button" class="btn btn-primary section-gap-sm" onclick="saveAssetAction()">حفظ الأصل</button>
     </div>
   </div>
@@ -860,21 +864,32 @@
         <div class="form-group">
           <label for="printerHourlyDepreciation">تكلفة تشغيل الطابعة فقط / ساعة</label>
           <input type="text" id="printerHourlyDepreciation" inputmode="decimal" />
+          <span class="section-subtext">لو عندك تكلفة تشغيل بالساعة اكتبها هنا. إهلاك الطابعة بيظهر تحت.</span>
         </div>
       </div>
 
       <div id="printerPurchaseFields" class="section-gap-sm">
+        <div id="printerExistingAssetField" class="form-group" hidden>
+          <label for="printerExistingAsset">ربط أصل مسجل قبل كده (اختياري)</label>
+          <select id="printerExistingAsset" onchange="selectPrinterPurchaseAsset()"></select>
+        </div>
         <div class="grid-2">
           <div class="form-group">
             <label for="printerPurchasePrice">سعر شراء الطابعة (اختياري)</label>
-            <input type="text" id="printerPurchasePrice" inputmode="decimal" placeholder="مثال 65000" />
+            <input type="text" id="printerPurchasePrice" inputmode="decimal" placeholder="مثال 65000" oninput="updatePrinterDepreciationPreview()" />
           </div>
           <div class="form-group">
             <label for="printerPurchaseHours">ساعات إهلاك الطابعة</label>
-            <input type="text" id="printerPurchaseHours" inputmode="decimal" />
+            <input type="text" id="printerPurchaseHours" inputmode="decimal" oninput="updatePrinterDepreciationPreview()" />
           </div>
         </div>
-        <p class="section-subtext">لو كتبت سعر الشراء، هيتسجل أصل للطابعة مع الحفظ. تقدر تعدّل السعر بعدين من شاشة «الأصول».</p>
+        <div class="form-group section-gap-sm">
+          <label for="printerDepreciationOverride">إهلاك الساعة يدويًا (اختياري)</label>
+          <input type="text" id="printerDepreciationOverride" inputmode="decimal" placeholder="مثال 13" oninput="updatePrinterDepreciationPreview()" />
+          <span class="section-subtext">سيبها فاضية لو عايز البرنامج يحسب إهلاك الساعة من سعر الشراء وساعات الإهلاك.</span>
+        </div>
+        <p id="printerDepreciationPreview" class="section-subtext" role="status" aria-live="polite"></p>
+        <p class="section-subtext">سعر الشراء وساعات الإهلاك بيتحفظوا في «الأصول» وبيظهر سعر الشراء في الداشبورد.</p>
       </div>
 
       <div class="form-group section-gap-sm">
@@ -1041,11 +1056,12 @@
         <label><input type="checkbox" id="resetRestartCodes" /> بدء أرقام الأوردرات من ORD-1001 وعروض الأسعار من Q-1001. قد يكرر أرقامًا استُخدمت سابقًا.</label>
       </fieldset>
       <div class="form-group">
-        <label for="resetConfirmation">اكتب «بداية جديدة» للتأكيد، ثم وافق على نافذة التأكيد الثانية</label>
-        <input type="text" id="resetConfirmation" autocomplete="off" placeholder="بداية جديدة" />
+        <label for="resetConfirmation">اكتب «بداية جديدة»، وبعدها اضغط «متابعة للتأكيد».</label>
+        <input type="text" id="resetConfirmation" autocomplete="off" placeholder="بداية جديدة" aria-describedby="resetConfirmationHint" oninput="syncFreshStartConfirmation()" />
+        <span id="resetConfirmationHint" class="section-subtext" role="status" aria-live="polite"></span>
       </div>
       <div class="inline-actions section-gap-sm">
-        <button type="button" id="executeFreshStart" class="btn btn-danger" onclick="executeFreshStart()">حفظ نسخة أمان ثم بدء صفحة جديدة</button>
+        <button type="button" id="executeFreshStart" class="btn btn-danger" disabled onclick="executeFreshStart()">متابعة للتأكيد</button>
         <button type="button" class="btn btn-secondary" onclick="openSafetyBackupsFolder()">فتح مجلد نسخ الأمان</button>
       </div>
       <p id="resetResult" class="reset-result" role="status" aria-live="polite"></p>
@@ -1056,7 +1072,7 @@
     <h2 id="firstRunTitle">أهلًا بك في MOO3D Farm</h2>
     <p id="firstRunIntro">قبل أول أوردر، سجّل طابعتك وتكلفة شرائها والخامة اللي هتطبع بيها، عشان البرنامج يحسب التكلفة ويخصم الخامة من المخزون.</p>
     <ol class="first-run-steps">
-      <li><strong>الطابعات</strong> — سجّل الاسم وسعر الشراء وساعات الإهلاك. لو تعرف تكلفة تشغيل الساعة، اكتبها في خانتها.</li>
+      <li><strong>الطابعات</strong> — سجّل الاسم وسعر الشراء، وحدد ساعات الإهلاك أو اكتب إهلاك الساعة بنفسك. لو تعرف تكلفة تشغيل الساعة، اكتبها في خانتها.</li>
       <li><strong>الأصول</strong> — سعر الشراء اللي حفظته مع الطابعة هيظهر هنا وفي الداشبورد، وساعات الإهلاك بتدخل في حساب تكلفة الأوردر.</li>
       <li><strong>المشتريات</strong> — اختار «خامات» و«إضافة خامة جديدة باسم البند». اكتب اسمها ولونها، وعدد البكرات ووزن البكرة والمبلغ اللي دفعته. الخامة هتظهر في المخزون.</li>
     </ol>

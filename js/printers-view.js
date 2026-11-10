@@ -84,6 +84,11 @@ function renderPrinters() {
     const statusText = getPrinterStatusText(printer.status);
     const statusClass = getPrinterStatusClass(printer.status);
     const usage = getPrinterUsageStats(printerId);
+    const depreciation = getAssetHourlyDepreciation({
+      cost: printer.purchasePrice,
+      depreciationHours: printer.purchaseHours,
+      hourlyDepreciationOverride: printer.purchaseHourlyDepreciationOverride
+    });
 
     return `
       <div class="list-card">
@@ -95,6 +100,8 @@ function renderPrinters() {
         <div class="list-card-body">
           <div>الموديل: ${escapeHtml(printer.model || '-')}</div>
           <div>تشغيل الطابعة فقط / ساعة: ${formatMoney(printer.hourlyDepreciation || 0)}</div>
+          ${printer.purchaseAssetId ? `<div>سعر الشراء ${formatMoney(printer.purchasePrice)}</div>` : ''}
+          ${printer.purchaseAssetId ? `<div>إهلاك الطابعة / ساعة ${formatMoney(depreciation)}${printer.purchaseHourlyDepreciationOverride != null ? ' (يدوي)' : ''}</div>` : ''}
           <div>إجمالي ساعات التشغيل: ${formatNumber(usage.totalHours)} ساعة</div>
           <div>عدد الأوردرات على الطابعة: ${usage.ordersCount}</div>
           <div>أوردرات تم تسليمها: ${usage.deliveredOrders}</div>

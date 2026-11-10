@@ -13,7 +13,7 @@ const {
   getNextQuoteCode,
   setConfig,
   createPrinter,
-  createPrinterWithAsset,
+  savePrinterWithAsset,
   updatePrinter,
   deletePrinter,
   createMaterial,
@@ -357,6 +357,7 @@ function normalizePurchasePayload(payload) {
 
 function normalizeAssetPayload(payload) {
   const data = asObject(payload);
+  const override = data.hourlyDepreciationOverride;
   return {
     id: asNullableId(data.id),
     date: asTrimmedString(data.date),
@@ -364,6 +365,8 @@ function normalizeAssetPayload(payload) {
     cost: asPositiveNumber(data.cost, 0),
     type: asTrimmedString(data.type),
     depreciationHours: asPositiveNumber(data.depreciationHours, 0),
+    hourlyDepreciationOverride: override === undefined ? undefined
+      : override === null || override === '' ? null : asNumber(override, NaN),
     notes: asTrimmedString(data.notes)
   };
 }
@@ -381,6 +384,10 @@ function validateAssetPayload(data) {
   if (!data.date) throw new Error('تاريخ الأصل مطلوب');
   if (!data.item) throw new Error('اسم الأصل مطلوب');
   if (data.cost <= 0) throw new Error('تكلفة الأصل لازم تكون أكبر من صفر');
+  const override = data.hourlyDepreciationOverride;
+  if (override != null && (!Number.isFinite(override) || override < 0)) {
+    throw new Error('إهلاك الساعة لازم يكون رقم صفر أو أكبر.');
+  }
 }
 
 function validatePrinterPayload(data) {
@@ -630,6 +637,14 @@ function validateBackupPayload(payload) {
   });
   stockMovements.forEach((row) => checkReference(row.materialId, materialIds, 'حركة الخامة'));
   purchases.forEach((row) => checkReference(row.materialId, materialIds, 'خامة المشتريات'));
+  const printersWithAssets = new Set();
+  for (const asset of assets) {
+    if (asset.printerId == null) continue;
+    checkReference(asset.printerId, printerIds, 'طابعة الأصل', true);
+    const printerId = Number(asset.printerId);
+    if (printersWithAssets.has(printerId)) throw new Error('فيه أكتر من أصل مرتبط بنفس الطابعة في النسخة الاحتياطية.');
+    printersWithAssets.add(printerId);
+  }
 
   const allowedPrinterStatuses = new Set(['idle', 'printing', 'maintenance', 'offline']);
   const allowedOrderStatuses = new Set(['new', 'printing', 'finished', 'delivered', 'cancelled']);
@@ -680,6 +695,10 @@ function validateBackupPayload(payload) {
   assets.forEach((asset) => {
     if (!asTrimmedString(asset.item)) throw new Error('أصل بدون اسم في النسخة الاحتياطية');
     if (asPositiveNumber(asset.cost, 0) <= 0) throw new Error('تكلفة أصل غير صالحة في النسخة الاحتياطية');
+    const override = asset.hourlyDepreciationOverride;
+    if (override != null && (override === '' || !Number.isFinite(Number(override)) || Number(override) < 0)) {
+      throw new Error('إهلاك الساعة غير صالح في النسخة الاحتياطية');
+    }
   });
 
   quotes.forEach((quote) => {
@@ -751,26 +770,28 @@ function registerIpcHandlers() {
       const data = normalizePrinterPayload(payload);
       validatePrinterPayload(data);
 
-      if (data.id) {
-        updatePrinter(data);
+      const purchaseInput = asObject(payload).purchase;
+      if (purchaseInput == null) {
+        if (data.id) updatePrinter(data);
+        else createPrinter(data);
         return ok();
       }
-      const purchase = asObject(payload).purchase;
-      if (purchase == null) {
-        createPrinter(data);
-        return ok();
-      }
+      const purchase = asObject(purchaseInput);
 
       const asset = normalizeAssetPayload({
+        id: purchase.assetId,
         date: new Date().toISOString().slice(0, 10),
         item: data.name,
         type: 'طابعة',
-        cost: asObject(purchase).cost,
-        depreciationHours: asObject(purchase).depreciationHours
+        cost: purchase.cost,
+        depreciationHours: purchase.depreciationHours,
+        hourlyDepreciationOverride: purchase.hourlyDepreciationOverride
       });
       validateAssetPayload(asset);
-      if (asset.depreciationHours <= 0) throw new Error('اكتب عدد ساعات إهلاك أكبر من صفر.');
-      createPrinterWithAsset(data, asset);
+      if (asset.depreciationHours <= 0 && asset.hourlyDepreciationOverride == null) {
+        throw new Error('اكتب عدد ساعات إهلاك أكبر من صفر أو حدد إهلاك الساعة.');
+      }
+      savePrinterWithAsset(data, asset);
       scheduleAutomaticBackup('after-printer-asset');
       return ok({ assetSaved: true });
     },

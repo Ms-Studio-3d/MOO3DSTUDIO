@@ -5,6 +5,16 @@ function syncFreshStartOptions() {
   optionalResetIds.forEach((id) => { $(id).disabled = $('resetFactory').checked; });
 }
 
+function syncFreshStartConfirmation() {
+  const phrase = getTrimmedValue('resetConfirmation').replace(/\s+/g, ' ').replace(/ه(?= |$)/g, 'ة');
+  const ready = phrase === 'بداية جديدة';
+  $('executeFreshStart').disabled = freshStartRunning || !ready;
+  setText('resetConfirmationHint', ready
+    ? 'العبارة صحيحة. اضغط «متابعة للتأكيد».'
+    : 'زر المتابعة هيتفعّل لما تكتب «بداية جديدة».');
+  return ready;
+}
+
 function openFreshStartModal() {
   if (freshStartRunning) return;
   for (const id of ['resetFactory', ...optionalResetIds]) {
@@ -12,10 +22,10 @@ function openFreshStartModal() {
   }
   syncFreshStartOptions();
   setValue('resetConfirmation', '');
+  syncFreshStartConfirmation();
   setText('resetResult', '');
   const summary = dashboardData.meta?.summary || {};
   setText('resetPreview', `سيتم مسح كل السجلات، وليس نتائج البحث فقط: ${Number(summary.ordersCount || 0)} أوردر، و${dashboardData.materials.length} خامة، وكل المشتريات وعروض الأسعار وحركات المخزون. أسماء العملاء مشتقة من الأوردرات وستُزال معها.`);
-  if ($('executeFreshStart')) $('executeFreshStart').disabled = false;
   openModal('freshStartModal');
   $('resetConfirmation')?.focus();
 }
@@ -27,7 +37,7 @@ function closeFreshStartModal() {
 
 async function executeFreshStart() {
   if (freshStartRunning) return;
-  if (getTrimmedValue('resetConfirmation') !== 'بداية جديدة') {
+  if (!syncFreshStartConfirmation()) {
     showToast('اكتب «بداية جديدة» كما هي لتأكيد المسح.', 'error');
     $('resetConfirmation')?.focus();
     return;
@@ -39,7 +49,7 @@ async function executeFreshStart() {
   let completed = false;
   try {
     const options = {
-      confirmation: getTrimmedValue('resetConfirmation'),
+      confirmation: 'بداية جديدة',
       factoryReset: $('resetFactory').checked,
       clearPrinters: !!$('resetClearPrinters')?.checked,
       clearAssets: !!$('resetClearAssets')?.checked,
@@ -58,7 +68,7 @@ async function executeFreshStart() {
       options.restartCodes ? 'أرقام الأوردرات هتبدأ من ORD-1001.' : 'أرقام الأوردرات هتكمل من آخر رقم.',
       ]),
       'هيتم حفظ نسخة أمان قبل المسح.'
-    ], { title: 'تأكيد البداية الجديدة', action: 'حفظ نسخة أمان ثم المسح', danger: true });
+    ], { title: 'تأكيد البداية الجديدة', action: 'تأكيد التصفير', danger: true });
     if (!confirmed) {
       setText('resetResult', 'تم الإلغاء.');
       return;
@@ -84,7 +94,6 @@ async function executeFreshStart() {
     MODAL_IDS.filter((id) => !['settingsModal', 'freshStartModal'].includes(id)).forEach(closeModal);
     resetOrderForm();
     const loaded = await loadDashboardData();
-    setValue('resetConfirmation', '');
     const trackerStatus = response.data.trackingError
       ? `\nالبرنامج اتصفّر. شيت المتابعة محتاج مراجعة: ${response.data.trackingError}`
       : options.factoryReset ? '\nافتح البرنامج من جديد عشان يظهر دليل أول تشغيل.' : '';
@@ -99,7 +108,8 @@ async function executeFreshStart() {
     freshStartRunning = false;
     controls.forEach((control) => { control.disabled = false; });
     syncFreshStartOptions();
-    if (completed && $('executeFreshStart')) $('executeFreshStart').disabled = true;
+    if (completed) setValue('resetConfirmation', '');
+    syncFreshStartConfirmation();
   }
 }
 

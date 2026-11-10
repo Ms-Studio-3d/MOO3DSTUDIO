@@ -1,34 +1,47 @@
 
+function getAssetHourlyDepreciation(asset) {
+  if (asset.hourlyDepreciationOverride != null) {
+    return toPositiveNumber(asset.hourlyDepreciationOverride, 0);
+  }
+  const hours = toPositiveNumber(asset.depreciationHours, 0);
+  return hours > 0 ? toPositiveNumber(asset.cost, 0) / hours : 0;
+}
+
 function getAssetsHourlyDepreciation(options = {}) {
   const assets = Array.isArray(dashboardData.assets) ? dashboardData.assets : [];
   const printer = options.printer || null;
 
   let totalHourlyDepreciation = 0;
   let printerAssetHourlyDepreciation = 0;
+  let hasPrinterOverride = false;
 
   assets.forEach((asset) => {
     const cost = toPositiveNumber(asset.cost, 0);
     const hours = toPositiveNumber(asset.depreciationHours, 0);
-    if (hours <= 0) return;
+    if (hours <= 0 && asset.hourlyDepreciationOverride == null) return;
 
-    const hourly = cost / hours;
+    const hourly = getAssetHourlyDepreciation(asset);
     totalHourlyDepreciation += hourly;
 
     const text = `${asset.item || ''} ${asset.type || ''} ${asset.assetType || ''}`.toLowerCase();
-    const looksLikePrinterAsset = cost >= 10000 && (
+    const looksLikePrinter = (
       text.includes('bambu') ||
       text.includes('طابعة') ||
       text.includes('printer') ||
       text.includes('ماكينة')
     );
 
-    if (looksLikePrinterAsset) printerAssetHourlyDepreciation += hourly;
+    if (cost >= 10000 && looksLikePrinter) printerAssetHourlyDepreciation += hourly;
+    if (asset.hourlyDepreciationOverride != null
+      && (asset.printerId != null ? Number(asset.printerId) === Number(printer?.id) : looksLikePrinter)) {
+      hasPrinterOverride = true;
+    }
   });
 
   // حماية لقاعدة بيانات قديمة أو ناقصة: لو الطابعة الافتراضية موجودة لكن أصل الطابعة غير متسجل،
   // نضيف إهلاكها الافتراضي مرة واحدة فقط: 60000 ÷ 5000 = 12 جنيه/ساعة.
   // لا يتم استخدام هذا fallback إذا كان أصل طابعة حقيقي موجود بالفعل.
-  if (isDefaultBambuPrinter(printer) && printerAssetHourlyDepreciation <= 0) {
+  if (isDefaultBambuPrinter(printer) && printerAssetHourlyDepreciation <= 0 && !hasPrinterOverride) {
     totalHourlyDepreciation += 12;
   }
 

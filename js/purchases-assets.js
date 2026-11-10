@@ -191,19 +191,14 @@ function renderAssetsTable() {
   if (!target) return;
 
   const total = rows.reduce((sum, item) => sum + Number(item.cost || 0), 0);
-  const totalDepHour = rows.reduce((sum, item) => {
-    const hours = Number(item.depreciationHours || 0);
-    return sum + (hours > 0 ? Number(item.cost || 0) / hours : 0);
-  }, 0);
+  const totalDepHour = rows.reduce((sum, asset) => sum + getAssetHourlyDepreciation(asset), 0);
 
   setText('assetsTotalCost', formatMoney(total));
   setText('assetsCount', String(dashboardData.meta?.assets?.total || rows.length));
   setText('assetsAvgDepHour', rows.length ? formatMoney(totalDepHour / rows.length) : formatMoney(0));
 
   const rowsHtml = rows.map((asset) => {
-    const depHour = Number(asset.depreciationHours || 0) > 0
-      ? Number(asset.cost || 0) / Number(asset.depreciationHours || 1)
-      : 0;
+    const depHour = getAssetHourlyDepreciation(asset);
     const safeId = Number(asset.id || 0);
     return `
       <tr>
@@ -212,7 +207,7 @@ function renderAssetsTable() {
         <td>${formatMoney(asset.cost || 0)}</td>
         <td>${escapeHtml(asset.type || '-')}</td>
         <td>${formatNumber(asset.depreciationHours || 0)}</td>
-        <td>${formatMoney(depHour)}</td>
+        <td>${formatMoney(depHour)}${asset.hourlyDepreciationOverride != null ? ' (يدوي)' : ''}</td>
         <td>${escapeHtml(asset.notes || '-')}</td>
         <td>
           <button class="action-btn edit" type="button" onclick="openAssetModal(${safeId})">تعديل</button>
@@ -273,6 +268,7 @@ function openAssetModal(id = null) {
   setValue('assetCost', asset?.cost ?? 0);
   setValue('assetType', asset?.type || '');
   setValue('assetDepreciationHours', asset?.depreciationHours ?? 5000);
+  setValue('assetDepreciationOverride', asset?.hourlyDepreciationOverride ?? '');
   setValue('assetNotes', asset?.notes || '');
 
   openModal('assetModal');
@@ -288,6 +284,13 @@ async function saveAssetAction() {
   savingAsset = true;
 
   try {
+    const overrideInput = getTrimmedValue('assetDepreciationOverride');
+    const hourlyDepreciationOverride = overrideInput ? toNumber(overrideInput, NaN) : null;
+    if (hourlyDepreciationOverride != null && (!Number.isFinite(hourlyDepreciationOverride) || hourlyDepreciationOverride < 0)) {
+      showToast('إهلاك الساعة لازم يكون رقم صفر أو أكبر.', 'error');
+      $('assetDepreciationOverride').focus();
+      return;
+    }
     const payload = {
       id: getValue('assetId') ? Number(getValue('assetId')) : null,
       date: getValue('assetDate'),
@@ -295,6 +298,7 @@ async function saveAssetAction() {
       cost: toPositiveNumber(getValue('assetCost'), 0),
       type: getTrimmedValue('assetType'),
       depreciationHours: toPositiveNumber(getValue('assetDepreciationHours'), 0),
+      hourlyDepreciationOverride,
       notes: getTrimmedValue('assetNotes')
     };
 

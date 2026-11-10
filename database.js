@@ -241,8 +241,10 @@ function createTables() {
       cost REAL NOT NULL DEFAULT 0,
       asset_type TEXT DEFAULT '',
       depreciation_hours REAL NOT NULL DEFAULT 0,
+      hourly_depreciation_override REAL CHECK (hourly_depreciation_override >= 0),
       notes TEXT DEFAULT '',
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      printer_id INTEGER REFERENCES printers(id) ON DELETE SET NULL
     );
   `);
 }
@@ -257,6 +259,28 @@ function runMigrations() {
   ensureColumnExists('printers', 'hourly_depreciation', `ALTER TABLE printers ADD COLUMN hourly_depreciation REAL DEFAULT 0`);
   ensureColumnExists('printers', 'notes', `ALTER TABLE printers ADD COLUMN notes TEXT DEFAULT ''`);
   ensureColumnExists('printers', 'is_archived', `ALTER TABLE printers ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0`);
+  db.transaction(() => {
+    const addedPrinterLink = ensureColumnExists('assets', 'printer_id',
+      'ALTER TABLE assets ADD COLUMN printer_id INTEGER REFERENCES printers(id) ON DELETE SET NULL');
+    if (!addedPrinterLink) return;
+    // Previous versions created the asset with the printer's exact name.
+    db.exec(`
+      WITH matches AS (
+        SELECT a.id AS asset_id, p.id AS printer_id,
+          COUNT(*) OVER (PARTITION BY a.id) AS printers_found,
+          COUNT(*) OVER (PARTITION BY p.id) AS assets_found
+        FROM assets a JOIN printers p ON TRIM(a.item) = TRIM(p.name)
+        WHERE TRIM(a.asset_type) = 'طابعة'
+      )
+      UPDATE assets
+      SET printer_id = (
+        SELECT printer_id FROM matches
+        WHERE asset_id = assets.id AND printers_found = 1 AND assets_found = 1
+      )
+    `);
+  })();
+  ensureColumnExists('assets', 'hourly_depreciation_override',
+    'ALTER TABLE assets ADD COLUMN hourly_depreciation_override REAL CHECK (hourly_depreciation_override >= 0)');
 
   ensureColumnExists('orders', 'order_status', `ALTER TABLE orders ADD COLUMN order_status TEXT DEFAULT 'new'`);
   ensureColumnExists('orders', 'quantity', `ALTER TABLE orders ADD COLUMN quantity REAL NOT NULL DEFAULT 1`);
@@ -300,6 +324,7 @@ function createIndexes() {
     CREATE INDEX IF NOT EXISTS idx_stock_movements_ref ON stock_movements(reference_code);
     CREATE INDEX IF NOT EXISTS idx_purchases_date_id ON purchases(purchase_date DESC, id DESC);
     CREATE INDEX IF NOT EXISTS idx_assets_date_id ON assets(asset_date DESC, id DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_assets_printer ON assets(printer_id);
     CREATE INDEX IF NOT EXISTS idx_quotes_date_id ON quotes(quote_date DESC, id DESC);
   `);
 }
@@ -311,6 +336,7 @@ function ensureColumnExists(tableName, columnName, alterSql) {
   if (!exists) {
     db.exec(alterSql);
   }
+  return !exists;
 }
 
 function backfillPricingBreakdown() {
@@ -760,7 +786,9 @@ function getAssetsPage(options = {}) {
       cost,
       asset_type AS type,
       depreciation_hours AS depreciationHours,
+      hourly_depreciation_override AS hourlyDepreciationOverride,
       notes,
+      printer_id AS printerId,
       created_at AS createdAt
     FROM assets
     ORDER BY asset_date DESC, id DESC
@@ -943,16 +971,21 @@ function getDashboardData(options = {}) {
   const pageOptions = normalizePageOptions(options);
   const printers = db.prepare(`
     SELECT
-      id,
-      name,
-      model,
-      status,
-      hourly_depreciation AS hourlyDepreciation,
-      notes,
-      is_archived AS isArchived
-    FROM printers
-    WHERE is_archived = 0
-    ORDER BY id DESC
+      p.id,
+      p.name,
+      p.model,
+      p.status,
+      p.hourly_depreciation AS hourlyDepreciation,
+      p.notes,
+      p.is_archived AS isArchived,
+      a.id AS purchaseAssetId,
+      a.cost AS purchasePrice,
+      a.depreciation_hours AS purchaseHours,
+      a.hourly_depreciation_override AS purchaseHourlyDepreciationOverride
+    FROM printers p
+    LEFT JOIN assets a ON a.printer_id = p.id
+    WHERE p.is_archived = 0
+    ORDER BY p.id DESC
   `).all();
 
   const materials = db.prepare(`
@@ -1019,10 +1052,32 @@ function createPrinter(data) {
   return Number(result.lastInsertRowid);
 }
 
-function createPrinterWithAsset(printer, asset) {
+function savePrinterWithAsset(printer, asset) {
   return db.transaction(() => {
-    const printerId = createPrinter(printer);
-    saveAsset(asset);
+    let printerId = printer.id;
+    if (printerId) {
+      if (!db.prepare('SELECT id FROM printers WHERE id = ? AND is_archived = 0').get(printerId)) {
+        throw new Error('الطابعة غير موجودة.');
+      }
+      updatePrinter(printer);
+    } else {
+      printerId = createPrinter(printer);
+    }
+    const linked = db.prepare('SELECT * FROM assets WHERE printer_id = ?').get(printerId);
+    const selected = asset.id ? db.prepare('SELECT * FROM assets WHERE id = ?').get(asset.id) : linked;
+    if (asset.id && (!selected || (selected.printer_id != null && selected.printer_id !== printerId)
+      || (linked && linked.id !== selected.id))) {
+      throw new Error('الأصل المختار اتغير أو مرتبط بطابعة تانية. افتح شاشة التعديل من جديد.');
+    }
+    const assetId = saveAsset({
+      ...asset,
+      id: selected?.id,
+      date: selected?.asset_date ?? asset.date,
+      item: selected?.item ?? asset.item,
+      type: selected?.asset_type ?? asset.type,
+      notes: selected?.notes ?? asset.notes
+    });
+    if (!linked) db.prepare('UPDATE assets SET printer_id = ? WHERE id = ?').run(printerId, assetId);
     return printerId;
   })();
 }
@@ -2069,26 +2124,33 @@ function saveAsset(payload) {
     cost: Math.max(0, Number(data.cost || 0)),
     type: String(data.type || '').trim(),
     depreciationHours: Math.max(0, Number(data.depreciationHours || 0)),
+    hourlyDepreciationOverride: data.hourlyDepreciationOverride,
     notes: String(data.notes || '').trim()
   };
 
   if (!clean.date) throw new Error('تاريخ الأصل مطلوب');
   if (!clean.item) throw new Error('اسم الأصل مطلوب');
   if (clean.cost <= 0) throw new Error('تكلفة الأصل لازم تكون أكبر من صفر');
+  const override = clean.hourlyDepreciationOverride;
+  if (override != null && (!Number.isFinite(override) || override < 0)) {
+    throw new Error('إهلاك الساعة لازم يكون رقم صفر أو أكبر.');
+  }
 
   if (clean.id) {
     db.prepare(`
       UPDATE assets
-      SET asset_date = ?, item = ?, cost = ?, asset_type = ?, depreciation_hours = ?, notes = ?
+      SET asset_date = ?, item = ?, cost = ?, asset_type = ?, depreciation_hours = ?, notes = ?,
+        hourly_depreciation_override = CASE WHEN ? THEN ? ELSE hourly_depreciation_override END
       WHERE id = ?
-    `).run(clean.date, clean.item, clean.cost, clean.type, clean.depreciationHours, clean.notes, clean.id);
+    `).run(clean.date, clean.item, clean.cost, clean.type, clean.depreciationHours, clean.notes,
+      Number(override !== undefined), override ?? null, clean.id);
     return clean.id;
   }
 
   const result = db.prepare(`
-    INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(clean.date, clean.item, clean.cost, clean.type, clean.depreciationHours, clean.notes);
+    INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes, hourly_depreciation_override)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(clean.date, clean.item, clean.cost, clean.type, clean.depreciationHours, clean.notes, override ?? null);
 
   return Number(result.lastInsertRowid);
 }
@@ -2207,8 +2269,8 @@ function replaceAllData(data) {
     `);
 
     const insertAsset = db.prepare(`
-      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes, printer_id, hourly_depreciation_override)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     Object.entries(payload.config || {}).forEach(([key, value]) => {
@@ -2368,7 +2430,9 @@ function replaceAllData(data) {
         Number(asset.cost || 0),
         String(asset.type || '').trim(),
         Number(asset.depreciationHours || 0),
-        String(asset.notes || '').trim()
+        String(asset.notes || '').trim(),
+        printerIdMap.get(Number(asset.printerId)) ?? null,
+        asset.hourlyDepreciationOverride == null ? null : Number(asset.hourlyDepreciationOverride)
       );
     });
 
@@ -2533,7 +2597,7 @@ module.exports = {
   generateUniqueOrderCode,
   setConfig,
   createPrinter,
-  createPrinterWithAsset,
+  savePrinterWithAsset,
   updatePrinter,
   deletePrinter,
   createMaterial,
