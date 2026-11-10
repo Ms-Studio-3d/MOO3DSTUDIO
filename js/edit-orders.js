@@ -186,6 +186,10 @@ async function openEditSale(code) {
   setValue('editPrintMinutes', printParts.minutes);
   setValue('editManualMinutes', order.manualMinutes || 0);
   setValue('editFinalPrice', order.finalPrice || 0);
+  $('editFinalPrice').readOnly = false;
+  setValue('editWasteWeight', order.wasteWeight || 0);
+  $('editLegacyWasteHint').hidden = !(Number(order.wasteWeight) > 0 &&
+    originalEditMaterials.every((row) => row.wasteGrams == null));
   setValue('editNotes', order.notes || '');
   renderEditMaterials();
   updateEditCostPreview();
@@ -196,6 +200,7 @@ async function openEditSale(code) {
 let editMaterialRequest = 0;
 let originalEditMaterials = [];
 let editMaterials = [];
+let manualEditPrice = '';
 
 function renderEditMaterials() {
   const picker = $('editMaterialPicker');
@@ -270,6 +275,12 @@ function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
     && usage.every((row) => originalEditMaterials.some((old) => (
       old.rowId === row.rowId && old.grams === row.grams && old.totalCost === row.totalCost
     )));
+  const wasteInput = getTrimmedValue('editWasteWeight');
+  const enteredWaste = wasteInput === '' ? 0 : toNumber(wasteInput, NaN);
+  const validWaste = Number.isFinite(enteredWaste) && enteredWaste >= 0;
+  const oldWasteWeight = Number(oldOrder.wasteWeight || 0);
+  const sameWaste = validWaste && roundMoney(enteredWaste) === roundMoney(oldWasteWeight);
+  const wasteWeight = sameWaste ? oldWasteWeight : roundMoney(enteredWaste);
   const sameTime = Number(printerId) === Number(oldOrder.printerId)
     && Math.abs(printHours - Number(oldOrder.printHours || 0)) < 0.0001
     && manualMinutes === Number(oldOrder.manualMinutes || 0);
@@ -279,10 +290,11 @@ function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
     directAddOnsCost: Number(oldOrder.accessoriesCost || 0) + Number(oldOrder.shippingCost || 0)
   } : recalculateEditedOrderCosts(oldOrder, printHours, manualMinutes, printerId);
 
-  if (!usage || sameMaterials) return { usage, sameMaterials, sameTime, costs: baseline };
-  const materialCost = usage.reduce((sum, row) => sum + row.totalCost, 0);
+  const state = { usage, sameMaterials, sameWaste, sameTime, validWaste };
+  if (!usage || !validWaste || (sameMaterials && sameWaste)) return { ...state, costs: baseline };
+  const materialCost = sameMaterials ? Number(oldOrder.materialCost || 0) : usage.reduce((sum, row) => sum + row.totalCost, 0);
   const grams = usage.reduce((sum, row) => sum + row.grams, 0);
-  const wasteCost = Number(oldOrder.wasteWeight || 0) * materialCost / grams;
+  const wasteCost = wasteWeight * materialCost / grams;
   const oldSubtotal = ['materialCost', 'wasteCost', 'depreciationCost', 'electricityCost', 'laborCost', 'packagingCost']
     .reduce((sum, field) => sum + Number(oldOrder[field] || 0), 0);
   const oldRiskCost = Number(oldOrder.riskCost || 0);
@@ -295,12 +307,11 @@ function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
     taxPercent: inferPercent(oldOrder.taxCost, oldSubtotal + oldRiskCost, getConfigNumber('defaultTaxPercent'))
   });
   return {
-    usage,
-    sameMaterials,
-    sameTime,
+    ...state,
     costs: {
       ...baseline,
       materialCost: roundMoney(pricing.materialCost),
+      wasteWeight,
       wasteCost: roundMoney(pricing.wasteCost),
       riskCost: roundMoney(pricing.riskCost),
       taxCost: roundMoney(pricing.taxCost),
@@ -309,21 +320,82 @@ function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
   };
 }
 
+function getEditPriceState(order, edit) {
+  const field = $('editFinalPrice');
+  const autoPrice = Boolean(edit.usage && edit.validWaste && !edit.sameWaste);
+  if (autoPrice && !field.readOnly) manualEditPrice = field.value;
+  if (!autoPrice && field.readOnly) field.value = manualEditPrice;
+  field.readOnly = autoPrice;
+
+  const savedPrice = Number(order.finalPrice || 0);
+  if (!autoPrice) return { finalPrice: toPositiveNumber(field.value, savedPrice) };
+
+  const { costs } = edit;
+  const oldTotalCost = Number(order.totalCost || 0);
+  const oldAddOns = Number(order.accessoriesCost || 0) + Number(order.shippingCost || 0);
+  const oldBeforeDiscount = Number(order.priceBeforeDiscount || savedPrice);
+  const profitMargin = inferPercent(
+    Math.max(0, oldBeforeDiscount - oldAddOns - oldTotalCost),
+    oldTotalCost,
+    getConfigNumber('defaultProfitMargin')
+  );
+  const pricing = calculateMoo3dPricing({
+    quantity: costs.quantity,
+    materialCost: costs.totalCost,
+    accessoriesCost: costs.accessoriesCost / costs.quantity,
+    shippingCost: costs.shippingCost,
+    profitMargin,
+    discountValue: order.discountValue,
+    minimumOrderPrice: order.minimumOrderPrice,
+    roundingStep: getConfigNumber('roundingStep')
+  });
+  const calculatedPrice = roundMoney(pricing.finalPrice);
+  const onlyReducedWaste = edit.sameMaterials && edit.sameTime && costs.wasteWeight < Number(order.wasteWeight);
+  const finalPrice = onlyReducedWaste ? Math.min(calculatedPrice, savedPrice) : calculatedPrice;
+  field.value = finalPrice;
+  return {
+    finalPrice,
+    automatic: {
+      priceBeforeDiscount: roundMoney(pricing.priceBeforeDiscount),
+      discountValue: roundMoney(pricing.safeDiscountValue),
+      priceAfterDiscount: roundMoney(pricing.priceAfterDiscount),
+      roundedAdjustment: roundMoney(Math.max(0, finalPrice - pricing.priceAfterDiscount))
+    }
+  };
+}
+
 function updateEditCostPreview() {
   const order = getOrderByCode(editingOrderCode);
   if (!order) return;
-  const { usage, costs } = getEditCostState(
+  const edit = getEditCostState(
     order,
     getPrintHoursFromInputs('edit'),
     toPositiveNumber(getValue('editManualMinutes'), Number(order.manualMinutes || 0)),
     Number(getValue('editPrinter'))
   );
+  const { usage, validWaste, costs } = edit;
+  const { finalPrice, automatic } = getEditPriceState(order, edit);
+  if (!validWaste) {
+    setText('editCostPreview', 'أدخل وزن هالك صالحًا بالجرام.');
+    return;
+  }
   if (!usage) {
     setText('editCostPreview', 'أدخل وزنًا أكبر من صفر لكل خامة.');
     return;
   }
-  const price = toPositiveNumber(getValue('editFinalPrice'), Number(order.finalPrice || 0));
-  setText('editCostPreview', `إجمالي التكلفة: ${formatMoney(costs.totalCost)} · صافي الربح: ${formatMoney(price - costs.totalCost - costs.directAddOnsCost)}`);
+  const paid = Number(order.paidAmount ?? order.finalPrice);
+  const cashChange = order.paymentStatus === 'collected' && !isCancelled(order) && finalPrice !== Number(order.finalPrice)
+    ? roundMoney(finalPrice - paid)
+    : 0;
+  const details = [
+    `تكلفة الهالك: ${formatMoney(costs.wasteCost)}`,
+    `إجمالي التكلفة: ${formatMoney(costs.totalCost)}`,
+    `صافي الربح: ${formatMoney(finalPrice - costs.totalCost - costs.directAddOnsCost)}`
+  ];
+  if (automatic) details.push(`سعر البيع بعد تعديل الهالك: ${formatMoney(finalPrice)}`);
+  if (cashChange < 0) details.push(`هيتخصم من الدرج ${formatMoney(-cashChange)} عند الحفظ.`);
+  if (cashChange > 0) details.push(`هيتضاف للدرج ${formatMoney(cashChange)} عند الحفظ.`);
+  setText('editCostPreview', details.join(' · '));
 }
 
 async function saveEditSale() {
@@ -355,11 +427,6 @@ async function saveEditSale() {
       return;
     }
 
-    const finalPrice = toPositiveNumber(
-      getValue('editFinalPrice'),
-      Number(oldOrder.finalPrice || 0)
-    );
-
     const printerValue = getValue('editPrinter');
     const printerId = printerValue ? Number(printerValue) : null;
 
@@ -382,18 +449,26 @@ async function saveEditSale() {
       return;
     }
 
-    const { usage, sameMaterials, sameTime, costs: recalculated } = getEditCostState(oldOrder, printHours, manualMinutes, printerId);
+    const edit = getEditCostState(oldOrder, printHours, manualMinutes, printerId);
+    const { usage, sameMaterials, sameWaste, sameTime, validWaste, costs: recalculated } = edit;
+    if (!validWaste) {
+      showToast('أدخل وزن هالك صالحًا بالجرام', 'error');
+      $('editWasteWeight')?.focus();
+      return;
+    }
     if (!usage) {
       showToast('أدخل وزنًا أكبر من صفر لكل خامة في الأوردر', 'error');
       return;
     }
-    const unchangedCostInputs = sameMaterials && sameTime;
+    const { finalPrice, automatic } = getEditPriceState(oldOrder, edit);
+    const stockEdited = !sameMaterials || !sameWaste;
+    const unchangedCostInputs = !stockEdited && sameTime;
 
     const minimumNoLossPrice =
       recalculated.totalCost +
       recalculated.directAddOnsCost;
 
-    if (finalPrice < minimumNoLossPrice && (sameMaterials || finalPrice !== Number(oldOrder.finalPrice || 0))) {
+    if (finalPrice < minimumNoLossPrice && (!stockEdited || finalPrice !== Number(oldOrder.finalPrice || 0))) {
       showToast(
         `سعر البيع أقل من التكلفة الجديدة: الحد الأدنى ${formatMoney(minimumNoLossPrice)}`,
         'error'
@@ -448,12 +523,14 @@ async function saveEditSale() {
   unitTotalCost: roundMoney(recalculated.totalCost / quantity),
   unitProfit: roundMoney(profit / quantity),
 
-  replaceMaterialUsage: !sameMaterials,
+  replaceMaterialUsage: stockEdited,
   expectedMaterialRowIds: originalEditMaterials.map((item) => item.rowId),
   materialUsage: usage
 };
 
-    if (sameTime && finalPrice === Number(oldOrder.finalPrice || 0)) {
+    if (automatic) {
+      Object.assign(payload, automatic);
+    } else if (sameTime && finalPrice === Number(oldOrder.finalPrice || 0)) {
       payload.priceBeforeDiscount = oldOrder.priceBeforeDiscount;
       payload.discountValue = oldOrder.discountValue;
       payload.priceAfterDiscount = oldOrder.priceAfterDiscount;
