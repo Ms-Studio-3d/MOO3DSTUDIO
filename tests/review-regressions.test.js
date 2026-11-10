@@ -174,11 +174,18 @@ async function run() {
     assert.equal(balance(wasteMaterial), 955);
     assert.equal(db.getDashboardData().meta.summary.collected, collectedBefore);
 
+    field('editWasteWeight').value = '5';
+    evaluate("editMaterials[0].grams = '35'; updateEditCostPreview()");
+    assert.equal(Number(field('editFinalPrice').value), 100);
+    evaluate("editMaterials[0].grams = '40'; updateEditCostPreview()");
+    assert.equal(Number(field('editFinalPrice').value), 110);
+
     field('editFinalPrice').value = '115';
+    evaluate('updateEditCostPreview()');
     field('editWasteWeight').value = '0';
     evaluate('updateEditCostPreview()');
     assert.equal(Number(field('editFinalPrice').value), 100);
-    assert.equal(field('editFinalPrice').readOnly, true);
+    assert.ok(!field('editFinalPrice').readOnly);
     assert.match(field('editCostPreview').innerText, /هيتخصم من الدرج 10\.00/);
 
     evaluate("dashboardData.config.roundingStep = '75'; updateEditCostPreview()");
@@ -188,22 +195,35 @@ async function run() {
     field('editWasteWeight').value = '5';
     evaluate('updateEditCostPreview()');
     assert.equal(field('editFinalPrice').value, '115');
-    assert.equal(field('editFinalPrice').readOnly, false);
 
     field('editWasteWeight').value = '0';
+    evaluate('updateEditCostPreview()');
+    field('editFinalPrice').value = '80';
+    evaluate('updateEditCostPreview()');
+    assert.equal(field('editFinalPrice').value, '80');
+    assert.match(field('editCostPreview').innerText, /هيتخصم من الدرج 30\.00/);
+    evaluate("editMaterials[0].grams = '35'; updateEditCostPreview()");
+    assert.equal(Number(field('editFinalPrice').value), 90);
+    field('editFinalPrice').value = '45';
+    field('editNotes').value = 'السعر المتفق عليه';
+    evaluate('updateEditCostPreview()');
+    assert.equal(field('editFinalPrice').value, '45');
     await evaluate('saveEditSale()');
     const editedSale = db.getDashboardData().orders.find((row) => row.code === wasteSale.code);
-    assert.deepEqual([editedSale.wasteWeight, editedSale.wasteCost, editedSale.finalPrice, editedSale.paidAmount], [0, 0, 100, 100]);
-    assert.equal(balance(wasteMaterial), 960);
-    assert.equal(db.getDashboardData().meta.summary.collected, collectedBefore - 10);
+    assert.deepEqual([editedSale.wasteWeight, editedSale.wasteCost, editedSale.finalPrice, editedSale.paidAmount], [0, 0, 45, 45]);
+    assert.equal(balance(wasteMaterial), 965);
+    assert.equal(db.getDashboardData().meta.summary.collected, collectedBefore - 65);
     const staleEdit = await h.farmAPI.updateOrder({
       ...wasteSale, replaceMaterialUsage: false, expectedMaterialRowIds: initialMaterialRows
     });
     assert.equal(staleEdit.success, false);
     await evaluate('openEditSale(orderCode)');
+    field('editCustomerName').value = 'تعديل اسم العميل بعد الحفظ';
     await evaluate('saveEditSale()');
-    assert.equal(balance(wasteMaterial), 960);
-    assert.equal(db.getDashboardData().meta.summary.collected, collectedBefore - 10);
+    assert.equal(db.getDashboardData().orders.find((row) => row.code === wasteSale.code).customerName,
+      'تعديل اسم العميل بعد الحفظ');
+    assert.equal(balance(wasteMaterial), 965);
+    assert.equal(db.getDashboardData().meta.summary.collected, collectedBefore - 65);
 
     const legacyWaste = { ...wasteSale, code: db.getNextOrderCode() };
     await save(legacyWaste);
