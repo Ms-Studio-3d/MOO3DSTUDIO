@@ -43,10 +43,15 @@ app.once('browser-window-created', (_event, window) => {
       assert.equal(data.success, true, data.message);
       assert.equal(data.data.printers.length, 0);
       assert.equal(typeof await execute('window.require'), 'undefined');
+      phase = 'renderer security settings';
       const preferences = contents.getLastWebPreferences();
-      assert.equal(preferences.sandbox, true);
-      assert.equal(preferences.contextIsolation, true);
-      assert.equal(preferences.devTools, !packagedApp);
+      assert.equal(preferences.sandbox, true, 'Renderer sandbox');
+      assert.equal(preferences.contextIsolation, true, 'Renderer context isolation');
+      assert.equal(preferences.nodeIntegration, false, 'Renderer Node integration');
+      if (packagedApp) {
+        contents.openDevTools({ mode: 'detach', activate: false });
+        assert.equal(contents.devToolsWebContents, null, 'Packaged app must keep DevTools closed');
+      }
       phase = 'content security policy';
       await execute([
         'window.inlineBlocked = false;',
