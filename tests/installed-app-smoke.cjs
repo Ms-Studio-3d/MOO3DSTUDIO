@@ -24,7 +24,8 @@ async function run() {
     const initial = await page.evaluate(async () => window.farmAPI.getDashboardData());
     assert.equal(initial.success, true, initial.message);
     for (const key of ['orders', 'materials', 'printers', 'purchases']) assert.deepEqual(initial.data[key], [], key);
-    await page.locator('#firstRunGuide[open] [data-action-click="dismissFirstRunGuide"]').click();
+    await page.locator('#firstRunGuide[open]')
+      .getByRole('button', { name: 'ابدأ لاحقًا', exact: true }).click();
     console.log('PASS installed executable started in a clean profile');
 
     const security = await window.evaluate(async (win) => {
