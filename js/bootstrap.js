@@ -38,7 +38,7 @@ function bindPaymentInputs() {}
 
 function bindGlobalKeyboardShortcuts() {
   document.addEventListener('keydown', (event) => {
-    if ($('saleConfirmDialog')?.open) return;
+    if ($('saleConfirmDialog')?.open || $('firstRunGuide')?.open) return;
 
     if (event.key === 'Escape') {
       if (typeof freshStartRunning !== 'undefined' && freshStartRunning) return;
@@ -91,6 +91,23 @@ function initializeDates() {
   }
 }
 
+function openFirstRunGuide() {
+  const guide = $('firstRunGuide');
+  if (!guide.open) guide.showModal();
+}
+
+async function dismissFirstRunGuide(addPrinter = false) {
+  $('firstRunGuide').close();
+  if (addPrinter) {
+    openPrintersManagerModal();
+    openPrinterModal();
+  }
+  if (dashboardData.config.firstRunGuideSeen !== '1') {
+    const result = await window.farmAPI.saveConfig({ firstRunGuideSeen: '1' });
+    if (result?.success) dashboardData.config.firstRunGuideSeen = '1';
+  }
+}
+
 
 /* ربط الدوال المستخدمة من HTML قبل أي تشغيل */
 window.openEditSale = openEditSale;
@@ -106,5 +123,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   bindGlobalKeyboardShortcuts();
   bindImportInput();
 
-  await loadDashboardData();
+  $('firstRunGuide').addEventListener('cancel', (event) => {
+    event.preventDefault();
+    dismissFirstRunGuide();
+  });
+  if (await loadDashboardData() && dashboardData.config.firstRunGuideSeen !== '1'
+    && !['printers', 'assets', 'materials', 'orders', 'purchases', 'quotes'].some((key) => dashboardData[key].length)) {
+    openFirstRunGuide();
+  }
 });

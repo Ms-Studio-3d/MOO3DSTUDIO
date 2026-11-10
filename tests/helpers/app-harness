@@ -14,6 +14,8 @@ function createAppHarness(directory, { withSampleMaterials = true } = {}) {
   database.setDatabasePathForTests(dbPath);
   database.getDb();
   if (withSampleMaterials) {
+    database.createPrinter({ name: 'Test Printer', model: 'Test', status: 'idle', hourlyDepreciation: 6.5 });
+    database.saveAsset({ date: '2026-09-01', item: 'Test Printer', type: 'طابعة', cost: 50000, depreciationHours: 5000 });
     for (const color of ['Black', 'White', 'Red', 'Gold']) {
       database.createMaterial({ name: `Test PLA ${color}`, type: 'PLA', color,
         weight: 1000, remaining: 1000, price: 800, lowStockThreshold: 150 });
@@ -22,10 +24,20 @@ function createAppHarness(directory, { withSampleMaterials = true } = {}) {
   const handlers = new Map();
   const harness = { database, dbPath, documents, errors: [], calls: [], dialogBehavior: null };
   const paths = { appData: path.join(directory, 'AppData'), documents };
+  let launch;
+  class TestWindow {
+    webContents = { setWindowOpenHandler() {}, on() {} };
+    static getAllWindows() { return []; }
+    isDestroyed() { return false; }
+    loadFile() {}
+    once() {}
+    on() {}
+  }
   const electron = {
     app: { getPath: (name) => paths[name], setPath: (name, value) => { paths[name] = value; },
-      disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true, whenReady: () => ({ then() {} }), on() {}, quit() {} },
-    BrowserWindow: Object.assign(function () {}, { getAllWindows: () => [] }),
+      disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true,
+      whenReady: () => ({ then: (callback) => { launch = callback; } }), on() {}, quit() {} },
+    BrowserWindow: TestWindow,
     shell: { openExternal: async () => {}, openPath: async () => '', showItemInFolder: (file) => { harness.revealedFile = file; } },
     clipboard: { writeText: (text) => { harness.clipboardText = text; } },
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
@@ -48,6 +60,7 @@ function createAppHarness(directory, { withSampleMaterials = true } = {}) {
   moduleStub.exports.registerIpcHandlers();
   harness.validateBackupPayload = moduleStub.exports.validateBackupPayload;
   harness.appPaths = paths;
+  harness.startApp = () => launch();
   harness.invoke = async (channel, payload) => {
     harness.calls.push({ channel, payload });
     if (!handlers.has(channel)) throw new Error(`Unknown IPC channel: ${channel}`);

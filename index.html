@@ -512,7 +512,7 @@
         <h2>المبيعات والتقارير</h2>
         <div class="inline-actions">
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportSalesCSV()">مبيعات CSV</button>
-          <button type="button" class="btn btn-secondary btn-auto" onclick="copyOrdersForTracking()">نسخ لشيت المتابعة</button>
+          <button type="button" class="btn btn-secondary btn-auto" onclick="copyOrdersForTracking()">نسخ للشيت القديم</button>
           <button id="exportTrackingButton" type="button" class="btn btn-secondary btn-auto" onclick="exportTrackingWorkbook()">تصدير شيت المتابعة</button>
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportStockCSV()">مخزون CSV</button>
         </div>
@@ -1000,6 +1000,7 @@
         <button type="button" class="btn btn-secondary" onclick="triggerImportBackup()">استيراد Backup</button>
         <button type="button" class="btn btn-secondary" onclick="openSafetyBackupsFolder()">مجلد نسخ الأمان</button>
         <button type="button" class="btn btn-danger" onclick="openFreshStartModal()">بداية جديدة / تصفير البيانات</button>
+        <button type="button" class="btn btn-secondary" onclick="openFirstRunGuide()">دليل أول تشغيل</button>
         <input type="file" id="importBackupInput" hidden accept="application/json" />
       </div>
     </div>
@@ -1014,13 +1015,14 @@
       <div class="helper-box reset-warning">
         <strong>عملية مسح وليست مجرد إخفاء الأرقام.</strong>
         <p id="resetPreview"></p>
-        <p>يبدأ إجمالي المبيعات والأرباح والمشتريات والخامات وكاش البداية من صفر. معادلة التسعير وإعدادات تكاليف التشغيل تظل كما هي.</p>
+        <p>يبدأ إجمالي المبيعات والمشتريات والخامات وكاش البداية من صفر. اختر التصفير الكامل للرجوع إلى إعدادات أول تثبيت.</p>
         <p>نسخة أمان مؤكدة تُحفظ قبل المسح في Documents / MOO3DSTUDIO / Backups / Protected. إذا فشل الحفظ لن يتم المسح.</p>
       </div>
       <fieldset class="reset-options">
         <legend>اختيارات إضافية — لا تختارها إلا للبيانات التجريبية</legend>
+        <label><input type="checkbox" id="resetFactory" onchange="syncFreshStartOptions()" /> تصفير كامل زي أول تثبيت، بما فيه الطابعات والأصول والساعات والإعدادات وشيت المتابعة الجديد.</label>
         <label><input type="checkbox" id="resetClearPrinters" /> حذف الطابعات أيضًا لإضافتها من جديد.</label>
-        <label><input type="checkbox" id="resetClearAssets" /> حذف الأصول أيضًا. انتبه: ستحتاج إعادة قيم الأصول الصحيحة حتى لا تختلف مدخلات الإهلاك.</label>
+        <label><input type="checkbox" id="resetClearAssets" /> حذف الأصول أيضًا، بما فيها سعر شراء الطابعة.</label>
         <label><input type="checkbox" id="resetMachineHours" /> تصفير ساعات تشغيل الماكينة وآخر صيانة. بدون هذا الاختيار تُحفظ الساعات الفعلية.</label>
         <label><input type="checkbox" id="resetRestartCodes" /> بدء أرقام الأوردرات من ORD-1001 وعروض الأسعار من Q-1001. قد يكرر أرقامًا استُخدمت سابقًا.</label>
       </fieldset>
@@ -1035,6 +1037,24 @@
       <p id="resetResult" class="reset-result" role="status" aria-live="polite"></p>
     </div>
   </div>
+
+  <dialog id="firstRunGuide" class="sale-confirm-dialog first-run-guide" aria-labelledby="firstRunTitle" aria-describedby="firstRunIntro">
+    <h2 id="firstRunTitle">أهلًا بك في MOO3D Farm</h2>
+    <p id="firstRunIntro">قبل أول أوردر، سجّل طابعتك وتكلفة شرائها والخامة اللي هتطبع بيها، عشان البرنامج يحسب التكلفة ويخصم الخامة من المخزون.</p>
+    <ol class="first-run-steps">
+      <li><strong>الطابعات</strong> — أضف اسم الطابعة وتكلفة تشغيل الساعة لو تعرفها.</li>
+      <li><strong>الأصول</strong> — سجّل الطابعة بسعر شرائها وساعات الإهلاك، عشان تكلفة استخدامها تتحسب مع الأوردرات.</li>
+      <li><strong>المشتريات</strong> — اختار «خامات» و«إضافة خامة جديدة باسم البند». اكتب اسمها ولونها، وعدد البكرات ووزن البكرة والمبلغ اللي دفعته. الخامة هتظهر في المخزون.</li>
+    </ol>
+    <div class="helper-box first-run-tracking">
+      <strong>شيت المتابعة</strong>
+      <p>البرنامج بيعمل الشيت تلقائيًا في مجلد المستندات (Documents) بتاع حسابك في ويندوز، جوّه فولدر MOO3DSTUDIO. لتحديث الطلبات والمشتريات، اقفل الشيت في Excel واضغط «تصدير شيت المتابعة» من المبيعات.</p>
+    </div>
+    <div class="inline-actions sale-confirm-actions">
+      <button class="btn btn-secondary" type="button" onclick="dismissFirstRunGuide()">ابدأ لاحقًا</button>
+      <button class="btn btn-primary" type="button" onclick="dismissFirstRunGuide(true)" autofocus>أضف أول طابعة</button>
+    </div>
+  </dialog>
 
   <dialog id="saleConfirmDialog" class="sale-confirm-dialog" aria-labelledby="saleConfirmTitle" aria-describedby="saleConfirmDescription">
     <form method="dialog">

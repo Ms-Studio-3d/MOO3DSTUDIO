@@ -63,8 +63,8 @@ contextBridge.exposeInMainWorld('farmAPI', {
     return safeInvoke(CHANNELS.copyTrackingRows, text);
   },
 
-  exportTrackingWorkbook(rows) {
-    return safeInvoke(CHANNELS.exportTrackingWorkbook, rows);
+  exportTrackingWorkbook() {
+    return safeInvoke(CHANNELS.exportTrackingWorkbook);
   },
 
   getNextOrderCode() {

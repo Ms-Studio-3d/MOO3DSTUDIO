@@ -335,9 +335,6 @@ function backfillPricingBreakdown() {
 }
 
 function seedDefaults() {
-  const printersCount = db.prepare('SELECT COUNT(*) AS count FROM printers').get().count;
-  const assetsCount = db.prepare('SELECT COUNT(*) AS count FROM assets').get().count;
-
   const defaults = {
     farmName: 'MOO3DSTUDIO',
     currencyName: 'جنيه',
@@ -451,58 +448,6 @@ function seedDefaults() {
       AND notes LIKE '%تشمل تشغيل 20 + إهلاك 12 + صيانة 1.5%'
   `).run();
 
-  if (printersCount === 0) {
-    const insertPrinter = db.prepare(`
-      INSERT INTO printers (name, model, status, hourly_depreciation, notes, is_archived)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    insertPrinter.run(
-      'Bambu Lab A1',
-      'A1',
-      'idle',
-      6.5,
-      'الطابعة الأساسية - Bambu Lab A1 — تكلفة تشغيل الطابعة فقط. التسعير يضيف إهلاك الأصول ونصيب الصيانة مرة واحدة تلقائيًا.',
-      0
-    );
-  }
-
-  if (assetsCount === 0) {
-    db.prepare(`
-      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      '2026-04-12',
-      'Bambu Lab A1 Combo / الطابعة',
-      60000,
-      'طابعة',
-      5000,
-      'أصل افتتاحي لحساب استرداد تكلفة الطابعة'
-    );
-  }
-
-
-  const hasLargePrinterAsset = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM assets
-    WHERE cost >= 10000
-      AND depreciation_hours > 0
-      AND (item LIKE '%Bambu%' OR item LIKE '%طابعة%' OR asset_type LIKE '%طابعة%')
-  `).get().count;
-
-  if (Number(hasLargePrinterAsset || 0) === 0) {
-    db.prepare(`
-      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(
-      '2026-04-12',
-      'Bambu Lab A1 Combo / الطابعة',
-      60000,
-      'طابعة',
-      5000,
-      'أصل افتراضي أضيف لضمان حساب إهلاك الطابعة مرة واحدة داخل التسعير'
-    );
-  }
   setConfig('initialDataSeeded', '1');
 }
 
@@ -976,6 +921,22 @@ function getDataPage(kind, options = {}) {
     default:
       throw new Error('نوع البيانات غير مدعوم');
   }
+}
+
+function getTrackingData() {
+  const database = getDb();
+  return database.transaction(() => {
+    const orders = getDataPage('orders', { includeAll: true }).items.filter((order) => order.status !== 'cancelled');
+    const { totalAssets, stock } = getDashboardSummary();
+    return {
+      orders,
+      purchases: getDataPage('purchases', { includeAll: true }).items,
+      openingCash: Math.max(0, Number(getAllConfig().openingCash) || 0),
+      totalAssets,
+      stockValue: stock.value,
+      materialUsed: orders.reduce((sum, order) => sum + order.materialCost + order.wasteCost, 0)
+    };
+  })();
 }
 
 function getDashboardData(options = {}) {
@@ -2460,6 +2421,10 @@ function resetBusinessData(payload) {
     `);
     if (options.clearPrinters) database.exec('DELETE FROM printers;');
     if (options.clearAssets) database.exec('DELETE FROM assets;');
+    if (options.factoryReset) {
+      database.exec('DELETE FROM app_config;');
+      seedDefaults();
+    }
     // Keep primary-key high-water marks: stale UI identifiers cannot point at new items.
     setConfig('openingCash', '0');
     setConfig('baseMachineHours', options.resetMachineHours ? '0' : String(
@@ -2552,6 +2517,7 @@ module.exports = {
   getDatabasePath,
   getDashboardData,
   getDataPage,
+  getTrackingData,
   getOrderMaterials,
   setDatabasePathForTests,
   getNextOrderCode,

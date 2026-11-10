@@ -27,16 +27,26 @@ async function workerBackup(reason) {
 }
 
 (async () => {
-  await test('new installation isolates its app profile and starts with no trading data', () => {
+  await test('first launch has no business data and creates the blank tracker in Windows Documents', async () => {
     h = createAppHarness(path.join(temporary, 'clean'), { withSampleMaterials: false });
     assert.equal(h.appPaths.userData, path.join(h.appPaths.appData, 'MOO3DSTUDIO'));
+    h.appPaths.documents = path.join(temporary, 'different Windows owner', 'redirected Documents');
+    const file = path.join(h.appPaths.documents, 'MOO3DSTUDIO', 'متابعة_MOO3D_Farm_بداية_جديدة.xlsx');
+    assert.equal(fs.existsSync(file), false);
+    await h.startApp();
+    assert.deepEqual(fs.readFileSync(file), fs.readFileSync(path.join(__dirname, '../assets/tracking-template.xlsx')));
+    const modifiedTime = new Date('2026-01-01');
+    fs.utimesSync(file, modifiedTime, modifiedTime);
+    await h.startApp();
+    assert.equal(fs.statSync(file).mtimeMs, modifiedTime.getTime());
     const data = full();
-    for (const field of ['materials', 'orders', 'quotes', 'purchases', 'stockMovements']) {
+    for (const field of ['printers', 'assets', 'materials', 'orders', 'quotes', 'purchases', 'stockMovements']) {
       assert.equal(data[field].length, 0, field);
     }
     assert.equal(data.config.farmName, 'MOO3DSTUDIO');
     assert.equal(data.config.openingCash, '0');
     assert.equal(data.config.baseMachineHours, '0');
+    assert.equal(data.config.firstRunGuideSeen, undefined);
     assert.doesNotThrow(() => h.validateBackupPayload(data));
     assert.doesNotThrow(() => h.validateBackupPayload({ ...data, appName: 'Print Farm App' }));
   });
@@ -307,33 +317,94 @@ async function workerBackup(reason) {
     await vm.runInContext('copyOrdersForTracking()', renderer);
     assert.equal(h.clipboardText, [active.code, active.date, "'=1+2", 'عميل اختبار', '320.00', '173.65', '320.00'].join('\t'));
   });
-  await test('exports Excel to Documents and refreshes only the imported rows', async () => {
+  await test('exports sales and purchases from SQLite and preserves manual sheets on refresh', async () => {
     fresh('tracking-workbook');
-    const rows = [
-      ['ORD-1001', '2026-11-10', '=1+2', 'عميل', 150, 83.6, 120],
-      ['ORD-1002', '2026-11-11', 'أوردر تاني', '', 90, 50, 90]
-    ];
-    const first = await h.farmAPI.exportTrackingWorkbook(rows);
+    const sale = sampleOrder(h.database, { itemName: '=1+2', date: '2026-11-10', totalCost: 75,
+      accessoriesCost: 5.6, shippingCost: 3, finalPrice: 150, profit: 66.4 });
+    assert.equal((await h.farmAPI.createOrder(sale)).success, true);
+    assert.equal((await h.farmAPI.createOrder(sampleOrder(h.database, { code: 'ORD-1002', status: 'cancelled' }))).success, true);
+    assert.equal((await h.farmAPI.savePurchase({ date: '2026-11-10', category: 'أخرى', item: 'مستلزمات اختبار',
+      quantity: 1, amount: 40 })).success, true);
+    h.database.setConfig('openingCash', '25');
+    const first = await h.farmAPI.exportTrackingWorkbook();
     assert.equal(first.success, true, first.message);
-    const file = path.join(h.documents, 'MOO3DSTUDIO', 'متابعة_MOO3D_Farm.xlsx');
-    assert.equal(first.data, file);
+    const file = path.join(h.documents, 'MOO3DSTUDIO', 'متابعة_MOO3D_Farm_بداية_جديدة.xlsx');
+    assert.equal(first.data.path, file);
+    assert.equal(first.data.orders, 1);
+    assert.equal(first.data.purchases, 1);
     assert.equal(h.revealedFile, file);
     const JSZip = require('jszip');
+    const { DOMParser, XMLSerializer } = require('@xmldom/xmldom');
     const initial = await JSZip.loadAsync(fs.readFileSync(file));
-    const tabPath = 'xl/worksheets/sheet2.xml';
-    const initialTab = await initial.file(tabPath).async('string');
-    assert.ok(initialTab.includes('ORD-1002') && initialTab.includes('83.6') && initialTab.includes('inlineStr'));
+    const part = (zip, number) => zip.file(`xl/worksheets/sheet${number}.xml`).async('string');
+    const cell = (xml, address) => Array.from(new DOMParser().parseFromString(xml, 'application/xml')
+      .getElementsByTagNameNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'c'))
+      .find((node) => node.getAttribute('r') === address);
+    const initialOrders = await part(initial, 8);
+    assert.equal(cell(initialOrders, 'A5').textContent, sale.code);
+    assert.equal(cell(initialOrders, 'C5').getAttribute('t'), 'inlineStr');
+    assert.equal(cell(initialOrders, 'C5').textContent, '=1+2');
+    assert.ok(Math.abs(Number(cell(initialOrders, 'F5').textContent) - 83.6) < 1e-9);
+    assert.equal(cell(initialOrders, 'G5').textContent, '150');
+    assert.equal(cell(await part(initial, 9), 'G5').textContent, '40');
+    assert.equal(cell(await part(initial, 4), 'D5').textContent, '40');
+    assert.equal(cell(await part(initial, 2), 'B21').textContent, '25');
+    assert.equal(cell(await part(initial, 2), 'B6').textContent, '50000');
+    assert.match(cell(await part(initial, 3), 'M5').textContent, /استيراد البرنامج.*A5/);
+    assert.ok(!initialOrders.includes('ORD-1002'));
+
+    const manualTab = 'xl/worksheets/sheet10.xml';
+    const manualCell = cell(await part(initial, 10), 'C5');
+    const doc = manualCell.ownerDocument;
+    manualCell.setAttribute('t', 'inlineStr');
+    const inlineString = manualCell.appendChild(doc.createElementNS(manualCell.namespaceURI, 'is'));
+    inlineString.appendChild(doc.createElementNS(manualCell.namespaceURI, 't')).textContent = 'يدوي';
+    const manual = new XMLSerializer().serializeToString(doc);
+    initial.file(manualTab, manual);
+    fs.writeFileSync(file, await initial.generateAsync({ type: 'nodebuffer' }));
     const locked = path.join(path.dirname(file), '~$' + path.basename(file));
     fs.writeFileSync(locked, '');
-    assert.equal((await h.farmAPI.exportTrackingWorkbook(rows.slice(0, 1))).success, false);
+    assert.equal((await h.farmAPI.exportTrackingWorkbook()).success, false);
+    assert.equal((await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true, factoryReset: true })).success, false);
+    assert.ok(getOrder(sale.code));
     fs.unlinkSync(locked);
-    const second = await h.farmAPI.exportTrackingWorkbook(rows.slice(0, 1));
+
+    const nextSale = sampleOrder(h.database, { date: '2026-11-11', itemName: 'طلب بعد الإدخال اليدوي' });
+    assert.equal((await h.farmAPI.createOrder(nextSale)).success, true);
+    const updated = await h.farmAPI.exportTrackingWorkbook();
+    assert.equal(updated.success, true, updated.message);
+    assert.equal(updated.data.orders, 2);
+    const newer = await JSZip.loadAsync(fs.readFileSync(file));
+    const newerOrders = await part(newer, 8);
+    assert.equal(cell(newerOrders, 'A5').textContent, nextSale.code);
+    assert.equal(cell(newerOrders, 'A6').textContent, sale.code);
+    assert.equal(await part(newer, 10), manual);
+
+    assert.equal((await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true, restartCodes: true })).success, true);
+    const second = await h.farmAPI.exportTrackingWorkbook();
     assert.equal(second.success, true, second.message);
+    assert.equal(second.data.orders, 0);
+    assert.equal(second.data.purchases, 0);
     const refreshed = await JSZip.loadAsync(fs.readFileSync(file));
-    const refreshedTab = await refreshed.file(tabPath).async('string');
-    assert.ok(refreshedTab.includes('ORD-1001') && !refreshedTab.includes('ORD-1002'));
-    assert.equal(await refreshed.file('xl/worksheets/sheet1.xml').async('string'),
-      await initial.file('xl/worksheets/sheet1.xml').async('string'));
+    assert.equal(cell(await part(refreshed, 8), 'A5').textContent, '');
+    assert.equal(cell(await part(refreshed, 9), 'G5').textContent, '');
+    assert.equal(cell(await part(refreshed, 2), 'B21').textContent, '0');
+    assert.equal(await part(refreshed, 10), manual);
+    assert.equal(await part(refreshed, 11), await part(initial, 11));
+
+    const beforeFactory = fs.readFileSync(file);
+    h.database.setConfig('firstRunGuideSeen', '1');
+    h.database.setConfig('defaultProfitMargin', '77');
+    const factory = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true, factoryReset: true });
+    assert.equal(factory.success, true, factory.message);
+    assert.equal(factory.data.trackingError, null);
+    assert.deepEqual(fs.readFileSync(file), fs.readFileSync(path.join(__dirname, '../assets/tracking-template.xlsx')));
+    assert.deepEqual(fs.readFileSync(factory.data.backupPath.replace(/\.json$/, '-tracking.xlsx')), beforeFactory);
+    assert.equal(full().printers.length, 0);
+    assert.equal(full().assets.length, 0);
+    assert.equal(full().config.firstRunGuideSeen, undefined);
+    assert.equal(full().config.defaultProfitMargin, '100');
+    assert.equal(factory.data.nextOrderCode, 'ORD-1001');
   });
   console.log(`\n${passed} stability scenarios passed through actual preload/main/SQLite, with native OS dialogs mocked.`);
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {

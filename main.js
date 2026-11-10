@@ -6,6 +6,7 @@ const {
   getDb,
   getDashboardData,
   getDataPage,
+  getTrackingData,
   getOrderMaterials,
   getDatabasePath,
   getNextOrderCode,
@@ -33,7 +34,7 @@ const {
 } = require('./database');
 const { normalizeResetOptions } = require('./reset-options');
 const { writeVerifiedBackup } = require('./backup-safety');
-const { saveTrackingWorkbook } = require('./tracking-workbook');
+const { ensureTrackingWorkbook, prepareTrackingReset, saveTrackingWorkbook } = require('./tracking-workbook');
 const { productName: PRODUCT_NAME } = require('./package.json');
 const DATA_DIRECTORY_NAME = 'MOO3DSTUDIO';
 const BACKUP_APP_NAME = 'moo3dstudio';
@@ -44,6 +45,8 @@ let autoBackupTimer = null;
 let autoBackupRunning = false;
 let shutdownBackupDone = false;
 let maintenanceBusy = false;
+let trackingExportInProgress = false;
+const trackingDirectory = () => path.join(app.getPath('documents'), DATA_DIRECTORY_NAME);
 
 function writeStartupError(error) {
   try {
@@ -715,11 +718,17 @@ function registerIpcHandlers() {
     clipboard.writeText(text);
     return ok();
   }, 'فشل في نسخ بيانات الشيت');
-  handleIpc(CHANNELS.exportTrackingWorkbook, async (rows) => {
-    const directory = path.join(app.getPath('documents'), DATA_DIRECTORY_NAME);
-    const savedPath = await saveTrackingWorkbook(directory, rows);
-    shell.showItemInFolder(savedPath);
-    return ok(savedPath);
+  handleIpc(CHANNELS.exportTrackingWorkbook, async () => {
+    if (trackingExportInProgress) throw new Error('تصدير شيت المتابعة شغال بالفعل.');
+    trackingExportInProgress = true;
+    try {
+      const snapshot = getTrackingData();
+      const savedPath = await saveTrackingWorkbook(trackingDirectory(), snapshot);
+      shell.showItemInFolder(savedPath);
+      return ok({ path: savedPath, orders: snapshot.orders.length, purchases: snapshot.purchases.length });
+    } finally {
+      trackingExportInProgress = false;
+    }
   }, 'تعذر تصدير ملف المتابعة');
   handleIpc(CHANNELS.getNextQuoteCode, async () => ok(getNextQuoteCode()), 'فشل في إنشاء كود عرض السعر');
 
@@ -924,13 +933,23 @@ function registerIpcHandlers() {
 
   handleIpc(CHANNELS.resetBusinessData, async (payload) => {
     const options = normalizeResetOptions(payload);
+    if (trackingExportInProgress) throw new Error('استنى لما تصدير شيت المتابعة يخلص، وبعدها جرّب البداية الجديدة.');
     if (payload.confirmed !== true) throw new Error('أكّد البداية الجديدة من النافذة قبل المسح.');
     maintenanceBusy = true;
     try {
       const backupPath = createProtectedBackup('before-reset');
+      const resetTracking = options.factoryReset ? await prepareTrackingReset(trackingDirectory(), backupPath) : null;
       const result = resetBusinessData(options);
+      let trackingError = null;
+      if (resetTracking) {
+        try {
+          await resetTracking();
+        } catch (error) {
+          trackingError = error?.message || 'تعذر إنشاء الشيت الفاضي.';
+        }
+      }
       scheduleAutomaticBackup('after-reset');
-      return ok({ ...result, backupPath });
+      return ok({ ...result, backupPath, trackingError });
     } finally { maintenanceBusy = false; }
   }, 'تعذر تنفيذ البداية الجديدة');
 
@@ -958,10 +977,13 @@ app.on('second-instance', () => {
   }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (!hasSingleInstanceLock) return;
   try {
     ensureDbReady();
+    await ensureTrackingWorkbook(trackingDirectory()).catch((error) => {
+      console.warn('[TRACKING WORKBOOK SETUP FAILED]', error?.message || error);
+    });
     scheduleAutomaticBackup('startup', 8000);
     setInterval(() => scheduleAutomaticBackup('daily', 8000), 24 * 60 * 60 * 1000);
     registerIpcHandlers();

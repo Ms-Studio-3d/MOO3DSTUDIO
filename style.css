@@ -533,6 +533,11 @@ input[readonly] {
   outline-offset: 2px;
 }
 
+.first-run-guide { width: min(630px, calc(100% - 32px)); }
+.first-run-steps { display: grid; gap: 10px; padding-inline-start: 22px; margin: 0 0 18px; line-height: 1.7; }
+.first-run-tracking { margin-bottom: 18px; }
+.first-run-tracking p { margin: 6px 0 0; }
+
 .modal {
   position: fixed;
   inset: 0;

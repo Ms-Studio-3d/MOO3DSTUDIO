@@ -189,10 +189,9 @@ async function exportTrackingWorkbook() {
   if (button.disabled) return;
   button.disabled = true;
   try {
-    const rows = await getTrackingRows();
-    const response = await window.farmAPI.exportTrackingWorkbook(rows);
+    const response = await window.farmAPI.exportTrackingWorkbook();
     if (!response?.success) throw new Error(response?.message || 'تعذر تصدير ملف المتابعة');
-    showToast(`تم تحديث ملف المتابعة في المستندات (${rows.length} أوردر)`);
+    showToast(`تم تحديث شيت المتابعة في المستندات: ${response.data.orders} أوردر و${response.data.purchases} عملية شراء.`);
   } catch (error) {
     showToast(error.message || 'تعذر تصدير ملف المتابعة', 'error');
   } finally {

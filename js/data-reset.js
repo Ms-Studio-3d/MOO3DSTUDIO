@@ -1,10 +1,16 @@
 let freshStartRunning = false;
+const optionalResetIds = ['resetClearPrinters', 'resetClearAssets', 'resetMachineHours', 'resetRestartCodes'];
+
+function syncFreshStartOptions() {
+  optionalResetIds.forEach((id) => { $(id).disabled = $('resetFactory').checked; });
+}
 
 function openFreshStartModal() {
   if (freshStartRunning) return;
-  for (const id of ['resetClearPrinters', 'resetClearAssets', 'resetMachineHours', 'resetRestartCodes']) {
+  for (const id of ['resetFactory', ...optionalResetIds]) {
     if ($(id)) $(id).checked = false;
   }
+  syncFreshStartOptions();
   setValue('resetConfirmation', '');
   setText('resetResult', '');
   const summary = dashboardData.meta?.summary || {};
@@ -27,13 +33,14 @@ async function executeFreshStart() {
     return;
   }
   freshStartRunning = true;
-  const controls = Array.from($('freshStartModal')?.querySelectorAll('input, button') || []);
+  const controls = Array.from($('freshStartModal')?.querySelectorAll('input, select, button') || []);
   controls.forEach((control) => { control.disabled = true; });
   setText('resetResult', '');
   let completed = false;
   try {
     const options = {
       confirmation: getTrimmedValue('resetConfirmation'),
+      factoryReset: $('resetFactory').checked,
       clearPrinters: !!$('resetClearPrinters')?.checked,
       clearAssets: !!$('resetClearAssets')?.checked,
       resetMachineHours: !!$('resetMachineHours')?.checked,
@@ -41,10 +48,15 @@ async function executeFreshStart() {
     };
     const confirmed = await askConfirm([
       'هيتم مسح المبيعات وعروض الأسعار والمشتريات والخامات وحركات المخزون وتصفير كاش البداية.',
+      ...(options.factoryReset ? [
+        'هيتم حذف الطابعات والأصول وتصفير الساعات وإرجاع الإعدادات وأرقام الأوردرات لأول تثبيت.',
+        'هيتم حفظ نسخة من شيت المتابعة الجديد ثم استبداله بنسخة فاضية.'
+      ] : [
       options.clearPrinters ? 'هيتم حذف الطابعات.' : 'هيتم الاحتفاظ بالطابعات.',
-      options.clearAssets ? 'هيتم حذف الأصول.' : 'هيتم الاحتفاظ بالأصول.',
+      options.clearAssets ? 'هيتم حذف كل الأصول.' : 'هيتم الاحتفاظ بالأصول.',
       options.resetMachineHours ? 'هيتم تصفير ساعات الماكينة وآخر صيانة.' : 'هيتم الاحتفاظ بساعات الماكينة وآخر صيانة.',
       options.restartCodes ? 'أرقام الأوردرات هتبدأ من ORD-1001.' : 'أرقام الأوردرات هتكمل من آخر رقم.',
+      ]),
       'هيتم حفظ نسخة أمان قبل المسح.'
     ], { title: 'تأكيد البداية الجديدة', action: 'حفظ نسخة أمان ثم المسح', danger: true });
     if (!confirmed) {
@@ -73,7 +85,10 @@ async function executeFreshStart() {
     resetOrderForm();
     const loaded = await loadDashboardData();
     setValue('resetConfirmation', '');
-    const resultText = `تمت البداية الجديدة. نسخة الأمان محفوظة في:\n${response.data.backupPath}\n\nيمكن استرجاعها من الإعدادات ← استيراد Backup. انسخها أيضًا على وسيط خارجي.`;
+    const trackerStatus = response.data.trackingError
+      ? `\nالبرنامج اتصفّر. شيت المتابعة محتاج مراجعة: ${response.data.trackingError}`
+      : options.factoryReset ? '\nافتح البرنامج من جديد عشان يظهر دليل أول تشغيل.' : '';
+    const resultText = `تمت البداية الجديدة. نسخة الأمان محفوظة في:\n${response.data.backupPath}${trackerStatus}\n\nيمكن استرجاع بيانات البرنامج من الإعدادات ← استيراد Backup.`;
     setText('resetResult', resultText + (loaded ? '' : '\nتم المسح، لكن عرض البيانات لم يتحدث. اقفل البرنامج وافتحه قبل إدخال أي بيانات.'));
     showToast('تمت البداية الجديدة وحفظ نسخة الأمان');
   } catch (error) {
@@ -83,6 +98,7 @@ async function executeFreshStart() {
   } finally {
     freshStartRunning = false;
     controls.forEach((control) => { control.disabled = false; });
+    syncFreshStartOptions();
     if (completed && $('executeFreshStart')) $('executeFreshStart').disabled = true;
   }
 }

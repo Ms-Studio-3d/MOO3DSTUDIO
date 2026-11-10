@@ -4,12 +4,11 @@ const { randomUUID } = require('node:crypto');
 const JSZip = require('jszip');
 const { DOMParser, XMLSerializer } = require('@xmldom/xmldom');
 
-const FILE_NAME = 'متابعة_MOO3D_Farm.xlsx';
-const IMPORT_SHEET = 'استيراد البرنامج';
-const LIMIT = 500;
+const FILE_NAME = 'متابعة_MOO3D_Farm_بداية_جديدة.xlsx';
+const LIMIT = 5000;
+const TEMPLATE = path.join(__dirname, 'assets', 'tracking-template.xlsx');
 const SHEET_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const OFFICE_REL_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
-const columns = 'ABCDEFG';
 
 async function readIfPresent(file) {
   try {
@@ -58,46 +57,46 @@ function setCell(row, address, value) {
   }
 }
 
-function validateRows(rows) {
-  if (!Array.isArray(rows) || rows.length > LIMIT) {
-    throw new Error('ملف المتابعة يدعم حتى 500 أوردر.');
-  }
-  for (const row of rows) {
-    if (!Array.isArray(row) || row.length !== 7 || !row[0]
-      || !row.slice(0, 4).every((value) => typeof value === 'string' && value.length <= 32767)
-      || !row.slice(4).every((value) => Number.isFinite(value) && value >= 0)) {
-      throw new Error('فيه بيانات أوردر غير صالحة للتصدير.');
-    }
-  }
+function toExcelDate(value, offset) {
+  const text = String(value || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text + 'T00:00:00Z');
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== text) return text;
+  return date.getTime() / 86400000 + offset;
 }
 
-async function updateWorkbook(buffer, rows) {
-  const zip = await JSZip.loadAsync(buffer);
-  const workbookPath = 'xl/workbook.xml';
-  const workbook = await readXml(zip, workbookPath);
+function resolveSheetPath(workbook, relationships, name) {
   const sheets = Array.from(workbook.getElementsByTagNameNS(SHEET_NS, 'sheet'));
-  const sheet = sheets.find((item) => item.getAttribute('name') === IMPORT_SHEET);
-  if (!sheet) throw new Error('الملف الموجود لازم يحتوي على تبويب «استيراد البرنامج».');
+  const sheet = sheets.find((item) => item.getAttribute('name') === name);
+  if (!sheet) throw new Error('ملف المتابعة الحالي مختلف عن قالب البداية الجديدة.');
   const relId = sheet.getAttributeNS(OFFICE_REL_NS, 'id');
-  const relationships = await readXml(zip, 'xl/_rels/workbook.xml.rels');
-  const relation = Array.from(relationships.getElementsByTagName('Relationship'))
+  const relation = Array.from(relationships.getElementsByTagNameNS('*', 'Relationship'))
     .find((item) => item.getAttribute('Id') === relId);
   const target = relation?.getAttribute('Target');
-  if (!target || relation.getAttribute('TargetMode') === 'External') throw new Error('تبويب الاستيراد غير صالح.');
-  const sheetPath = target.startsWith('/') ? target.slice(1) : path.posix.join('xl', target);
-  const sheetXml = await readXml(zip, sheetPath);
-  const sheetData = sheetXml.getElementsByTagNameNS(SHEET_NS, 'sheetData')[0];
-  const rowElements = new Map(Array.from(sheetData.getElementsByTagNameNS(SHEET_NS, 'row'))
-    .map((element) => [Number(element.getAttribute('r')), element]));
-  if (!rowElements.has(4)) throw new Error('جدول استيراد البرنامج ناقص.');
-  const date1904 = workbook.getElementsByTagNameNS(SHEET_NS, 'workbookPr')[0]?.getAttribute('date1904');
-  const dateOffset = date1904 === '1' || date1904 === 'true' ? 24107 : 25569;
+  if (!target || relation.getAttribute('TargetMode') === 'External') throw new Error('تبويب المتابعة غير صالح.');
+  return target.startsWith('/') ? target.slice(1) : path.posix.join('xl', target);
+}
 
-  for (let i = 0; i < LIMIT; i++) {
-    const number = i + 5;
-    const values = rows[i];
-    let row = rowElements.get(number);
-    if (!row && !values) continue;
+function getRows(sheetXml) {
+  const sheetData = sheetXml.getElementsByTagNameNS(SHEET_NS, 'sheetData')[0];
+  const rows = new Map(Array.from(sheetData.getElementsByTagNameNS(SHEET_NS, 'row'))
+    .map((element) => [Number(element.getAttribute('r')), element]));
+  return { sheetData, rows };
+}
+
+function updateRows(sheetXml, records, columns) {
+  const { rows, sheetData } = getRows(sheetXml);
+  if (!rows.has(4)) throw new Error('جدول المتابعة ناقص.');
+
+  for (const [number, row] of rows) {
+    if (number < records.length + 5 || number > LIMIT + 4) continue;
+    // Empty styled cells are retained for later exports.
+    for (const col of columns) setCell(row, col + number, null);
+  }
+
+  for (const [index, values] of records.entries()) {
+    const number = index + 5;
+    let row = rows.get(number);
     if (!row) {
       row = sheetXml.createElementNS(SHEET_NS, 'row');
       row.setAttribute('r', String(number));
@@ -105,20 +104,80 @@ async function updateWorkbook(buffer, rows) {
         .find((element) => Number(element.getAttribute('r')) > number);
       sheetData.insertBefore(row, next || null);
     }
-    for (let col = 0; col < columns.length; col++) {
-      let value = values?.[col];
-      if (col === 1 && value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-        const date = new Date(value + 'T00:00:00Z');
-        if (Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value) {
-          value = date.getTime() / 86400000 + dateOffset;
-        }
-      }
-      setCell(row, columns[col] + number, value);
-    }
+    values.forEach((value, col) => setCell(row, columns[col] + number, value));
+  }
+}
+
+async function updateWorkbook(buffer, snapshot) {
+  const zip = await JSZip.loadAsync(buffer);
+  const workbookPath = 'xl/workbook.xml';
+  const workbook = await readXml(zip, workbookPath);
+  const relationships = await readXml(zip, 'xl/_rels/workbook.xml.rels');
+  const date1904 = workbook.getElementsByTagNameNS(SHEET_NS, 'workbookPr')[0]?.getAttribute('date1904');
+  const dateOffset = date1904 === '1' || date1904 === 'true' ? 24107 : 25569;
+  const date = (value) => toExcelDate(value, dateOffset);
+  const text = (value) => String(value ?? '').slice(0, 32767);
+  const orderRows = snapshot.orders.map((order) => [
+    text(order.code), date(order.date), text(order.itemName), text(order.customerName),
+    order.finalPrice, order.totalCost + order.accessoriesCost + order.shippingCost,
+    order.paidAmount, order.profit, Math.max(0, order.finalPrice - order.paidAmount),
+    order.finalPrice ? order.profit / order.finalPrice : null
+  ]);
+  const purchaseRows = snapshot.purchases.map((purchase) => [
+    `PUR-${purchase.id}`, date(purchase.date), text(purchase.item), text(purchase.category),
+    purchase.quantity, purchase.gramsPerUnit, purchase.amount, text(purchase.supplier), text(purchase.notes)
+  ]);
+  if (![...orderRows, ...purchaseRows].every((row) => row.every((value) => typeof value !== 'number' || Number.isFinite(value)))) {
+    throw new Error('فيه أرقام غير صالحة في بيانات التصدير.');
   }
 
-  const view = sheetXml.getElementsByTagNameNS(SHEET_NS, 'sheetView')[0];
-  if (view) view.setAttribute('rightToLeft', '1');
+  const hasClassicLayout = Array.from(workbook.getElementsByTagNameNS(SHEET_NS, 'sheet'))
+    .some((sheet) => sheet.getAttribute('name') === 'استيراد البرنامج');
+  const tables = [['المشتريات', 'ABCDEFGHI', purchaseRows]];
+  if (hasClassicLayout) {
+    const purchaseMonth = (value) => {
+      const result = date(String(value || '').slice(0, 7) + '-01');
+      return typeof result === 'number' ? result : null;
+    };
+    const materialRows = snapshot.purchases.filter((purchase) => purchase.category === 'خامات').map((purchase) => [
+      date(purchase.date), text(purchase.item), purchase.amount, text(purchase.notes), 'جديد', purchaseMonth(purchase.date)
+    ]);
+    const expenseCategories = new Set(['صيانة', 'دعاية', 'أدوات', 'أخرى']);
+    const expenseRows = snapshot.purchases.filter((purchase) => expenseCategories.has(purchase.category)).map((purchase) => [
+      date(purchase.date), text(purchase.item), text(purchase.category), purchase.amount, purchaseMonth(purchase.date)
+    ]);
+    tables.push(
+      ['استيراد البرنامج', 'ABCDEFG', orderRows.map((row) => row.slice(0, 7))],
+      ['الخامات', 'ABCDEF', materialRows],
+      ['المصروفات', 'ABCDE', expenseRows]
+    );
+  } else {
+    tables.push(['الطلبات', 'ABCDEFGHIJ', orderRows]);
+  }
+
+  const serializer = new XMLSerializer();
+  for (const [name, columns, rows] of tables) {
+    const sheetPath = resolveSheetPath(workbook, relationships, name);
+    const sheet = await readXml(zip, sheetPath);
+    if (!sheet.getElementsByTagNameNS(SHEET_NS, 'sheetProtection').length) {
+      throw new Error('ملف المتابعة الحالي مختلف عن قالب البداية الجديدة.');
+    }
+    updateRows(sheet, rows, columns);
+    zip.file(sheetPath, serializer.serializeToString(sheet));
+  }
+  const metricsPath = resolveSheetPath(workbook, relationships, hasClassicLayout ? 'الإعدادات' : 'لوحة المتابعة');
+  const metrics = await readXml(zip, metricsPath);
+  const metricsRows = getRows(metrics).rows;
+  const updates = hasClassicLayout
+    ? [[6, snapshot.totalAssets], [21, snapshot.openingCash], [22, snapshot.stockValue], [23, snapshot.materialUsed]]
+    : [[11, snapshot.openingCash]];
+  for (const [number, value] of updates) {
+    const row = metricsRows.get(number);
+    if (!row || !Number.isFinite(value)) throw new Error('تعذر تحديث أرقام لوحة المتابعة.');
+    setCell(row, 'B' + number, value);
+  }
+  zip.file(metricsPath, serializer.serializeToString(metrics));
+
   let calc = workbook.getElementsByTagNameNS(SHEET_NS, 'calcPr')[0];
   if (!calc) {
     calc = workbook.createElementNS(SHEET_NS, 'calcPr');
@@ -126,18 +185,11 @@ async function updateWorkbook(buffer, rows) {
     workbook.documentElement.insertBefore(calc, extList?.parentNode === workbook.documentElement ? extList : null);
   }
   calc.setAttribute('fullCalcOnLoad', '1');
-  const serializer = new XMLSerializer();
-  zip.file(sheetPath, serializer.serializeToString(sheetXml));
   zip.file(workbookPath, serializer.serializeToString(workbook));
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
-async function saveTrackingWorkbook(directory, rows) {
-  validateRows(rows);
-  await fs.mkdir(directory, { recursive: true });
-  const target = path.join(directory, FILE_NAME);
-  const temporary = path.join(directory, `.${randomUUID()}.tmp`);
-  const template = path.join(__dirname, 'assets', 'tracking-template.xlsx');
+async function checkWorkbookClosed(directory) {
   for (const name of ['~$' + FILE_NAME, '~$' + FILE_NAME.slice(2)]) {
     if (await fs.stat(path.join(directory, name)).catch((error) => {
       if (error.code === 'ENOENT') return null;
@@ -146,9 +198,10 @@ async function saveTrackingWorkbook(directory, rows) {
       throw new Error('اقفل شيت المتابعة في Excel قبل ما تعيد التصدير.');
     }
   }
-  const existing = await readIfPresent(target);
-  const updated = await updateWorkbook(existing ?? await fs.readFile(template), rows);
+}
 
+async function writeWorkbook(target, updated, existing) {
+  const temporary = path.join(path.dirname(target), `.${randomUUID()}.tmp`);
   try {
     await fs.writeFile(temporary, updated, { flag: 'wx' });
     if (existing) {
@@ -169,4 +222,46 @@ async function saveTrackingWorkbook(directory, rows) {
   }
 }
 
-module.exports = { saveTrackingWorkbook };
+async function ensureTrackingWorkbook(directory) {
+  await fs.mkdir(directory, { recursive: true });
+  const target = path.join(directory, FILE_NAME);
+  if (await readIfPresent(target)) return target;
+  try {
+    return await writeWorkbook(target, await fs.readFile(TEMPLATE), null);
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    return target;
+  }
+}
+
+async function prepareTrackingReset(directory, backupPath) {
+  await fs.mkdir(directory, { recursive: true });
+  await checkWorkbookClosed(directory);
+  const target = path.join(directory, FILE_NAME);
+  const existing = await readIfPresent(target);
+  const blank = await fs.readFile(TEMPLATE);
+  if (existing?.equals(blank)) return async () => {};
+  if (existing) {
+    const workbookBackup = path.join(path.dirname(backupPath), path.basename(backupPath, '.json') + '-tracking.xlsx');
+    await fs.writeFile(workbookBackup, existing, { flag: 'wx' });
+  }
+  return async () => {
+    await checkWorkbookClosed(directory);
+    await writeWorkbook(target, blank, existing);
+  };
+}
+
+async function saveTrackingWorkbook(directory, snapshot) {
+  if (snapshot.orders.length > LIMIT || snapshot.purchases.length > LIMIT) {
+    throw new Error('الشيت يدعم حتى 5000 أوردر و5000 عملية شراء. لم يتغير الملف.');
+  }
+  await fs.mkdir(directory, { recursive: true });
+  await checkWorkbookClosed(directory);
+  const target = path.join(directory, FILE_NAME);
+  const existing = await readIfPresent(target);
+  const updated = await updateWorkbook(existing ?? await fs.readFile(TEMPLATE), snapshot);
+  await checkWorkbookClosed(directory);
+  return writeWorkbook(target, updated, existing);
+}
+
+module.exports = { ensureTrackingWorkbook, prepareTrackingReset, saveTrackingWorkbook };
