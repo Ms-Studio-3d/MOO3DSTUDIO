@@ -1729,7 +1729,7 @@ function updateOrder(payload) {
     const finalPrice = Number(data.finalPrice || 0);
     const quantity = requestedQuantity;
     const keepRecordedPrice = finalPrice === existingOrder.finalPrice;
-    if (data.replaceMaterialUsage === true && data.expectedMaterialRowIds
+    if (data.manualFinalPrice !== true && expectedRows
       && !keepRecordedPrice && finalPrice < Number(data.totalCost || 0) + Number(data.accessoriesCost || 0) + Number(data.shippingCost || 0)) {
       throw new Error('سعر البيع المعدّل أقل من التكلفة والمصاريف المباشرة');
     }

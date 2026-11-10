@@ -456,8 +456,8 @@ function validateUpdateOrderPayload(data) {
     }
   }
 
-  if (data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost
-    && !(data.replaceMaterialUsage && data.expectedMaterialRowIds)) {
+  if (!data.manualFinalPrice && data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost
+    && !data.expectedMaterialRowIds) {
     throw new Error('سعر البيع أقل من التكلفة والمصاريف المباشرة');
   }
 }
@@ -885,6 +885,12 @@ function registerIpcHandlers() {
     CHANNELS.updateOrder,
     async (payload) => {
       const data = normalizeOrderPayload(payload);
+      if (payload?.manualFinalPrice === true) {
+        if (!Number.isFinite(payload.finalPrice) || payload.finalPrice < 0) {
+          throw new Error('أدخل سعر بيع صالحًا');
+        }
+        data.manualFinalPrice = true;
+      }
       validateUpdateOrderPayload(data);
       updateOrder(data);
       scheduleAutomaticBackup('after-update');

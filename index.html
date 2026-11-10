@@ -654,7 +654,7 @@
 
         <div class="form-group">
           <label for="editFinalPrice">سعر البيع النهائي</label>
-          <input type="text" id="editFinalPrice" inputmode="decimal" />
+          <input type="text" id="editFinalPrice" inputmode="decimal" aria-describedby="editFinalPriceHint" />
         </div>
 
         <div class="form-group">
@@ -696,7 +696,7 @@
       <div class="helper-box section-gap-sm">
         <span id="editCostPreview" aria-live="polite"></span>
         <span id="editLegacyWasteHint" hidden>هالك الأوردر القديم محسوب في التكلفة. لو عدّلت وزنه، الوزن الجديد هيتخصم من المخزون عند الحفظ.</span>
-        <span>عند الحفظ يتحدّث المخزون والتكلفة. سعر البيع هو الرقم المسجّل في خانة سعر البيع النهائي.</span>
+        <span id="editFinalPriceHint">تعديل وزن الخامة أو الهالك يقترح سعرًا جديدًا. تقدر تكتب السعر اللي هيتسجل قبل الحفظ.</span>
       </div>
 
       <button type="button" class="btn btn-primary section-gap-sm" data-action-click="saveEditSale">حفظ التعديل</button>
