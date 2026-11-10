@@ -8,11 +8,6 @@ function getReportsFilters() {
   };
 }
 
-function getFilteredOrders() {
-  const state = getViewOrderState('reports');
-  return Array.isArray(state.items) && state.items.length ? state.items : getSortedOrders();
-}
-
 async function renderReportsTable() {
   const salesTableBody = $('salesTableBody');
   if (!salesTableBody) return;
@@ -39,15 +34,15 @@ async function renderReportsTable() {
         <td>${escapeHtml(order.customerName || '')}</td>
         <td>${escapeHtml(order.printerName || '-')}</td>
         <td>${formatNumber(order.quantity || 1)}</td>
-        <td>${formatMoney(order.totalCost || 0)}</td>
-        <td>${formatMoney(order.finalPrice || 0)}</td>
-        <td>${formatMoney(getOrderPaidAmount(order))}</td>
+        <td>${formatMoneyHtml(order.totalCost || 0)}</td>
+        <td>${formatMoneyHtml(order.finalPrice || 0)}</td>
+        <td>${formatMoneyHtml(getOrderPaidAmount(order))}</td>
         <td>${formatHoursMinutes(order.printHours || 0)}</td>
-        <td>${formatMoney(order.profit || 0)}</td>
+        <td>${formatMoneyHtml(order.profit || 0)}</td>
         <td>
-          <button class="action-btn edit" type="button" onclick="openEditSale(${codeArg})">تعديل</button>
-          <button class="action-btn" type="button" onclick="openInvoice(${codeArg})">فاتورة</button>
-          <button class="action-btn delete" type="button" onclick="deleteSale(${codeArg})">حذف</button>
+          <button class="action-btn edit" type="button" data-action-click="openEditSale" data-arg-click="${codeArg}">تعديل</button>
+          <button class="action-btn" type="button" data-action-click="openInvoice" data-arg-click="${codeArg}">فاتورة</button>
+          <button class="action-btn delete" type="button" data-action-click="deleteSale" data-arg-click="${codeArg}">حذف</button>
         </td>
       </tr>
     `;
@@ -58,7 +53,7 @@ async function renderReportsTable() {
   const hasMoreRemote = Boolean(state.meta?.hasMore);
   const remainingOrders = Math.max(0, matchedTotal - visibleOrders.length);
   const moreRow = (hasMoreLoaded || hasMoreRemote)
-    ? `<tr><td colspan="12"><button class="btn btn-secondary btn-small" type="button" onclick="showMoreReports()">عرض المزيد (${remainingOrders})</button></td></tr>`
+    ? `<tr><td colspan="12"><button class="btn btn-secondary btn-small" type="button" data-action-click="showMoreReports">عرض المزيد (${remainingOrders})</button></td></tr>`
     : '';
 
   salesTableBody.innerHTML = visibleOrders.length
@@ -92,7 +87,10 @@ function renderReportsTableSafe() {
   if (isModalOpen('reportsModal')) renderReportsTable();
 }
 
+let reportsOpenedFromDashboard = false;
+
 function openReports() {
+  reportsOpenedFromDashboard = isModalOpen('businessDashboardModal');
   reportsVisibleCount = LIST_PAGE_SIZE;
   const state = getViewOrderState('reports');
   state.filtersKey = '';
@@ -105,5 +103,6 @@ function openReports() {
 
 function closeReports() {
   closeModal('reportsModal');
-  returnToOrderNav();
+  if (reportsOpenedFromDashboard) openBusinessDashboard();
+  else returnToOrderNav();
 }

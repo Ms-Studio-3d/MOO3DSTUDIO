@@ -49,8 +49,8 @@ function getAssetsHourlyDepreciation(options = {}) {
 }
 
 function getMaintenanceCostPerHour() {
-  const everyHours = getConfigNumber('maintenanceEveryHours') || 1000;
-  const maintenanceCost = getConfigNumber('maintenanceCost') || 1500;
+  const everyHours = getConfigNumber('maintenanceEveryHours');
+  const maintenanceCost = getConfigNumber('maintenanceCost');
   if (everyHours <= 0) return 0;
   return maintenanceCost / everyHours;
 }
@@ -62,16 +62,7 @@ function isDefaultBambuPrinter(printer) {
 }
 
 function getPrinterOperatingCostPerHour(printer) {
-  const raw = toPositiveNumber(printer?.hourlyDepreciation, 0);
-
-  // قواعد حماية للبيانات القديمة: بعض النسخ خزنت في حقل الطابعة رقمًا شاملًا أو رقم إهلاك أصل.
-  // في المنطق النهائي هذا الحقل = تشغيل الطابعة فقط، أما الإهلاك والصيانة فيتحسبوا من الأصول والإعدادات.
-  if (isDefaultBambuPrinter(printer)) {
-    const legacyOrMissing = [0, 12, 20, 33.5].some((value) => Math.abs(raw - value) < 0.0001);
-    if (legacyOrMissing) return 6.5;
-  }
-
-  return raw;
+  return toPositiveNumber(printer?.hourlyDepreciation, 0);
 }
 
 function calc() {
@@ -260,7 +251,7 @@ function resetOrderForm() {
   setValue('pieceQuantity', '1');
   setValue('printHours', '0');
   setValue('printMinutes', '0');
-  setValue('opDate', new Date().toISOString().slice(0, 10));
+  setValue('opDate', localDateString());
   setValue('orderNotes', '');
   selectedOrderMaterialIds = [];
   document.querySelectorAll('.ams-weight').forEach((input) => {
@@ -314,19 +305,19 @@ function validateOrderBeforeSave(options = {}) {
 
   if (checkStock) {
     const requiredByMaterial = new Map();
-    (currentCalc.materialUsage || []).forEach((item) => {
+    allocateWaste(currentCalc.materialUsage || [], currentCalc.wasteWeight).forEach((item) => {
       const key = Number(item.materialId || 0);
       if (!key) return;
       const current = requiredByMaterial.get(key) || { grams: 0, remaining: Number(item.remaining || 0), name: item.materialName };
-      current.grams += Number(item.grams || 0);
+      current.grams += item.grams + item.wasteGrams;
       current.remaining = Number(item.remaining || current.remaining || 0);
       current.name = item.materialName || current.name;
       requiredByMaterial.set(key, current);
     });
 
     for (const item of requiredByMaterial.values()) {
-      if (Number(item.grams || 0) > Number(item.remaining || 0)) {
-        showToast(`المخزون غير كافٍ في ${item.name}: المطلوب ${formatNumber(item.grams)} جم والمتاح ${formatNumber(item.remaining)} جم`, 'error');
+      if (!stockCovers(item.remaining, item.grams)) {
+        showToast(`المخزون غير كافٍ في ${item.name}: المطلوب ${formatNumber(item.grams)} جم والمتاح ${stockWeightText(item.remaining)} جم`, 'error');
         return { valid: false };
       }
     }
@@ -408,9 +399,9 @@ function applySavedOrderLocally(payload) {
   };
   dashboardData.orders = [savedOrder, ...(dashboardData.orders || [])];
 
-  (payload.materialUsage || []).forEach((usage) => {
+  allocateWaste(payload.materialUsage || [], payload.wasteWeight).forEach((usage) => {
     const material = (dashboardData.materials || []).find((item) => Number(item.id) === Number(usage.materialId));
-    if (material) material.remaining = Math.max(0, Number(material.remaining || 0) - Number(usage.grams || 0));
+    if (material) material.remaining = Math.max(0, Number(material.remaining || 0) - usage.grams - usage.wasteGrams);
   });
 
   updateCustomersDatalist();
@@ -437,7 +428,7 @@ function buildCurrentOrderPayload(code) {
     printHours: getPrintHoursFromInputs(),
     manualMinutes: toPositiveNumber(getValue('manualMins'), 0),
     notes: getTrimmedValue('orderNotes'),
-    date: getValue('opDate') || new Date().toISOString().slice(0, 10),
+    date: getValue('opDate') || localDateString(),
     unitFinalPrice: currentCalc.unitFinalPrice,
     unitTotalCost: currentCalc.unitTotalCost,
     unitProfit: currentCalc.unitProfit,

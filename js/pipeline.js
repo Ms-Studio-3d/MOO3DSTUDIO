@@ -7,11 +7,6 @@ function getPipelineFilters() {
   };
 }
 
-function getPipelineFilteredOrders() {
-  const state = getViewOrderState('pipeline');
-  return Array.isArray(state.items) && state.items.length ? state.items : getSortedOrders();
-}
-
 async function renderPipeline() {
   const target = $('pipelineAll');
   const count = $('pipelineCountAll');
@@ -32,7 +27,7 @@ async function renderPipeline() {
   const hasMoreRemote = Boolean(state.meta?.hasMore);
   const remainingOrders = Math.max(0, matchedTotal - visibleOrders.length);
   const moreButton = (hasMoreLoaded || hasMoreRemote)
-    ? `<div class="inline-actions"><button class="btn btn-secondary btn-small" type="button" onclick="showMorePipeline()">عرض المزيد (${remainingOrders})</button></div>`
+    ? `<div class="inline-actions"><button class="btn btn-secondary btn-small" type="button" data-action-click="showMorePipeline">عرض المزيد (${remainingOrders})</button></div>`
     : '';
 
   target.innerHTML = visibleOrders.length
@@ -67,15 +62,15 @@ function renderPipelineCard(order) {
       </div>
 
       <div class="pipeline-price">
-        <span>التكلفة: ${formatMoney(order.totalCost || 0)}</span>
-        <strong>البيع: ${formatMoney(order.finalPrice || 0)}</strong>
-        <span>الربح: ${formatMoney(order.profit || 0)}</span>
+        <span>التكلفة: ${formatMoneyHtml(order.totalCost || 0)}</span>
+        <strong>البيع: ${formatMoneyHtml(order.finalPrice || 0)}</strong>
+        <span>الربح: ${formatMoneyHtml(order.profit || 0)}</span>
       </div>
 
       <div class="pipeline-actions">
-        <button class="action-btn edit" type="button" onclick="openEditSale(${codeArg})">تعديل</button>
-        <button class="action-btn" type="button" onclick="openInvoice(${codeArg})">فاتورة</button>
-        <button class="action-btn delete" type="button" onclick="deleteSale(${codeArg})">حذف</button>
+        <button class="action-btn edit" type="button" data-action-click="openEditSale" data-arg-click="${codeArg}">تعديل</button>
+        <button class="action-btn" type="button" data-action-click="openInvoice" data-arg-click="${codeArg}">فاتورة</button>
+        <button class="action-btn delete" type="button" data-action-click="deleteSale" data-arg-click="${codeArg}">حذف</button>
       </div>
     </article>
   `;

@@ -28,8 +28,8 @@ mustInclude(materialsManager, 'loadMoreStockMovements()', 'stock movements load-
 
 
 mustInclude(html, 'إضافة خامة جديدة باسم البند', 'purchase new material option');
-mustInclude(html, "openPurchasesModal({ returnTo: 'dashboard' })", 'dashboard purchases return target');
-mustInclude(html, "openAssetsModal({ returnTo: 'dashboard' })", 'dashboard assets return target');
+mustInclude(html, 'data-action-click="openDashboardPurchases"', 'dashboard purchases return target');
+mustInclude(html, 'data-action-click="openDashboardAssets"', 'dashboard assets return target');
 mustInclude(purchasesAssets, 'createMaterial:', 'purchase payload can request material creation');
 mustInclude(purchasesAssets, "panelReturnTargets.purchases", 'purchases panel return state');
 mustInclude(purchasesAssets, "panelReturnTargets.assets", 'assets panel return state');
@@ -118,7 +118,7 @@ const context = vm.createContext({
   }
 });
 context.window = context;
-for (const file of ['state', 'utils', 'inventory-view', 'pricing-core', 'pricing-orders']) {
+for (const file of ['state', 'local-date', 'stock-weights', 'utils', 'inventory-view', 'pricing-core', 'pricing-orders']) {
   vm.runInContext(fs.readFileSync(path.join(root, 'js', file + '.js'), 'utf8'), context, { filename: file });
 }
 const run = (code) => vm.runInContext(code, context);

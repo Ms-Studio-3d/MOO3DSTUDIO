@@ -1,3 +1,5 @@
+const { STOCK_EPSILON, stockCovers, allocateWaste } = require('./js/stock-weights');
+const { localDateString } = require('./js/local-date');
 let DatabaseDriver = null;
 const path = require('path');
 let electronApp = null;
@@ -8,6 +10,7 @@ try {
 }
 
 let db = null;
+const BACKUP_SCHEMA_VERSION = 10;
 
 function createNodeSqliteCompatDriver() {
   const { DatabaseSync } = require('node:sqlite');
@@ -50,12 +53,17 @@ function createNodeSqliteCompatDriver() {
 }
 
 function getDatabaseDriver() {
-  if (!DatabaseDriver) {
-    try {
-      DatabaseDriver = require('better-sqlite3');
-    } catch (_) {
-      DatabaseDriver = createNodeSqliteCompatDriver();
-    }
+  if (DatabaseDriver) return DatabaseDriver;
+  try {
+    const Driver = require('better-sqlite3');
+    new Driver(':memory:').close();
+    DatabaseDriver = Driver;
+  } catch (error) {
+    const bindingError = ['MODULE_NOT_FOUND', 'ERR_DLOPEN_FAILED'].includes(error.code)
+      || /Could not locate the bindings file|NODE_MODULE_VERSION|No native build was found/i.test(error.message);
+    if (!bindingError || process.versions.electron) throw error;
+    console.warn('[SQLITE NATIVE MODULE UNAVAILABLE]', error.message);
+    DatabaseDriver = createNodeSqliteCompatDriver();
   }
   return DatabaseDriver;
 }
@@ -85,23 +93,22 @@ function setDatabasePathForTests(dbPath) {
 function getDb(options = {}) {
   if (db) return db;
 
-  let Database = getDatabaseDriver();
-  try {
-    db = new Database(getDatabasePath(), options.readonly ? { readonly: true, fileMustExist: true } : {});
-  } catch (_) {
-    DatabaseDriver = createNodeSqliteCompatDriver();
-    Database = DatabaseDriver;
-    db = new Database(getDatabasePath(), options.readonly ? { readonly: true, fileMustExist: true } : {});
-  }
+  const Database = getDatabaseDriver();
+  db = new Database(getDatabasePath(), options.readonly ? { readonly: true, fileMustExist: true } : {});
   if (options.readonly) return db;
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  db.pragma('synchronous = NORMAL');
-
-  createTables();
-  runMigrations();
-  createIndexes();
-  seedDefaults();
+  try {
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.pragma('synchronous = NORMAL');
+    createTables();
+    runMigrations();
+    createIndexes();
+    seedDefaults();
+  } catch (error) {
+    try { db.close(); } catch (_) {}
+    db = null;
+    throw error;
+  }
 
   return db;
 }
@@ -185,6 +192,8 @@ function createTables() {
       material_id INTEGER,
       material_name TEXT NOT NULL,
       grams REAL NOT NULL DEFAULT 0,
+      waste_grams REAL CHECK (waste_grams >= 0),
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       price_per_gram REAL NOT NULL DEFAULT 0,
       total_cost REAL NOT NULL DEFAULT 0,
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
@@ -297,19 +306,24 @@ function runMigrations() {
   ensureColumnExists('orders', 'shipping_cost', `ALTER TABLE orders ADD COLUMN shipping_cost REAL NOT NULL DEFAULT 0`);
   ensureColumnExists('orders', 'risk_cost', `ALTER TABLE orders ADD COLUMN risk_cost REAL NOT NULL DEFAULT 0`);
   ensureColumnExists('orders', 'tax_cost', `ALTER TABLE orders ADD COLUMN tax_cost REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'price_before_discount', `ALTER TABLE orders ADD COLUMN price_before_discount REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'discount_value', `ALTER TABLE orders ADD COLUMN discount_value REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'price_after_discount', `ALTER TABLE orders ADD COLUMN price_after_discount REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'minimum_order_price', `ALTER TABLE orders ADD COLUMN minimum_order_price REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'rounded_adjustment', `ALTER TABLE orders ADD COLUMN rounded_adjustment REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'unit_final_price', `ALTER TABLE orders ADD COLUMN unit_final_price REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'unit_total_cost', `ALTER TABLE orders ADD COLUMN unit_total_cost REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'unit_profit', `ALTER TABLE orders ADD COLUMN unit_profit REAL NOT NULL DEFAULT 0`);
-  ensureColumnExists('orders', 'payment_status', `ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'collected'`);
-  ensureColumnExists('orders', 'payment_method', `ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'cash'`);
-  ensureColumnExists('orders', 'paid_amount', `ALTER TABLE orders ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0`);
+  db.transaction(() => {
+    const addedBefore = ensureColumnExists('orders', 'price_before_discount', `ALTER TABLE orders ADD COLUMN price_before_discount REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'discount_value', `ALTER TABLE orders ADD COLUMN discount_value REAL NOT NULL DEFAULT 0`);
+    const addedAfter = ensureColumnExists('orders', 'price_after_discount', `ALTER TABLE orders ADD COLUMN price_after_discount REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'minimum_order_price', `ALTER TABLE orders ADD COLUMN minimum_order_price REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'rounded_adjustment', `ALTER TABLE orders ADD COLUMN rounded_adjustment REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'unit_final_price', `ALTER TABLE orders ADD COLUMN unit_final_price REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'unit_total_cost', `ALTER TABLE orders ADD COLUMN unit_total_cost REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'unit_profit', `ALTER TABLE orders ADD COLUMN unit_profit REAL NOT NULL DEFAULT 0`);
+    ensureColumnExists('orders', 'payment_status', `ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'collected'`);
+    ensureColumnExists('orders', 'payment_method', `ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'cash'`);
+    const addedPaid = ensureColumnExists('orders', 'paid_amount', `ALTER TABLE orders ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0`);
 
-  backfillPricingBreakdown();
+    ensureColumnExists('order_materials', 'waste_grams', 'ALTER TABLE order_materials ADD COLUMN waste_grams REAL CHECK (waste_grams >= 0)');
+    backfillPricingBreakdown({ addedBefore, addedAfter, addedPaid });
+    const addedUsageDate = ensureColumnExists('order_materials', 'created_at', 'ALTER TABLE order_materials ADD COLUMN created_at TEXT');
+    if (addedUsageDate) db.exec('UPDATE order_materials SET created_at = (SELECT created_at FROM orders WHERE id = order_id)');
+  })();
 }
 
 function createIndexes() {
@@ -339,25 +353,10 @@ function ensureColumnExists(tableName, columnName, alterSql) {
   return !exists;
 }
 
-function backfillPricingBreakdown() {
-  db.prepare(`
-    UPDATE orders
-    SET
-      price_before_discount = CASE
-        WHEN price_before_discount IS NULL OR price_before_discount = 0 THEN final_price
-        ELSE price_before_discount
-      END,
-      price_after_discount = CASE
-        WHEN price_after_discount IS NULL OR price_after_discount = 0 THEN final_price
-        ELSE price_after_discount
-      END,
-      payment_status = 'collected',
-      payment_method = 'cash',
-      paid_amount = CASE
-        WHEN final_price > 0 THEN final_price
-        ELSE 0
-      END
-  `).run();
+function backfillPricingBreakdown({ addedBefore, addedAfter, addedPaid }) {
+  if (addedBefore) db.exec('UPDATE orders SET price_before_discount = final_price');
+  if (addedAfter) db.exec('UPDATE orders SET price_after_discount = final_price');
+  if (addedPaid) db.exec("UPDATE orders SET paid_amount = MAX(0, final_price) WHERE payment_status = 'collected'");
 }
 
 function seedDefaults() {
@@ -432,23 +431,6 @@ function seedDefaults() {
       AND ABS(CAST(COALESCE(value, '0') AS REAL) - 0.15) < 0.0001
   `).run();
 
-  // v1.8.7: تصحيح بيانات الطابعة الافتراضية القديمة.
-  // الحقل hourly_depreciation أصبح "تشغيل الطابعة فقط / ساعة".
-  // أرقام 0 أو 12 أو 20 أو 33.5 في قواعد قديمة كانت إما ناقصة أو شاملة أو إهلاك أصل،
-  // لذلك نعيد طابعة Bambu الافتراضية إلى 6.5 تشغيل فقط، والإهلاك والصيانة يتحسبان من الأصول والإعدادات.
-  db.prepare(`
-    UPDATE printers
-    SET hourly_depreciation = 6.5,
-        notes = 'الطابعة الأساسية - Bambu Lab A1 — تشغيل فقط 6.5/ساعة. البرنامج يضيف إهلاك الأصول ونصيب الصيانة مرة واحدة تلقائيًا.'
-    WHERE name = 'Bambu Lab A1'
-      AND (
-        ABS(COALESCE(hourly_depreciation, 0) - 0) < 0.0001
-        OR ABS(COALESCE(hourly_depreciation, 0) - 12) < 0.0001
-        OR ABS(COALESCE(hourly_depreciation, 0) - 20) < 0.0001
-        OR ABS(COALESCE(hourly_depreciation, 0) - 33.5) < 0.0001
-      )
-  `).run();
-
   // من v1.8.6 تكلفة ساعة الطابعة تعني تشغيل فقط.
   // إهلاك الأصول ونصيب الصيانة يتحسبوا كبنود مستقلة مرة واحدة داخل التسعير.
   // لو قاعدة البيانات جاية من v1.8.5 وفيها الرقم الافتراضي 20 كرقم شامل،
@@ -478,14 +460,7 @@ function seedDefaults() {
 }
 
 function getAllConfig() {
-  const rows = db.prepare('SELECT key, value FROM app_config').all();
-  const config = {};
-
-  for (const row of rows) {
-    config[row.key] = row.value;
-  }
-
-  return config;
+  return Object.fromEntries(db.prepare('SELECT key, value FROM app_config').all().map(({ key, value }) => [key, value]));
 }
 
 function setConfig(key, value) {
@@ -494,6 +469,28 @@ function setConfig(key, value) {
     VALUES (?, ?)
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `).run(String(key), String(value));
+}
+
+const USER_CONFIG_KEYS = new Set([
+  'farmName', 'currencyName', 'defaultProfitMargin', 'defaultManualMinutes', 'laborRate',
+  'electricityCostPerHour', 'printerPowerKw', 'packagingCost', 'failurePercent', 'defaultWasteWeight',
+  'minimumOrderPrice', 'accessoriesCost', 'shippingCost', 'defaultTaxPercent', 'defaultDiscountValue',
+  'roundingStep', 'openingCash', 'baseMachineHours', 'maintenanceEveryHours', 'lastMaintenanceAtHours', 'maintenanceCost'
+]);
+
+function saveUserConfig(config) {
+  const entries = Object.entries(config);
+  const guideOnly = entries.length === 1 && entries[0][0] === 'firstRunGuideSeen' && entries[0][1] === '1';
+  for (const [key, value] of entries) {
+    if (!guideOnly && !USER_CONFIG_KEYS.has(key)) throw new Error('إعداد غير مسموح: ' + key);
+    if (typeof value !== 'string' && typeof value !== 'number') throw new Error('قيمة إعداد غير صالحة: ' + key);
+    if (!['farmName', 'currencyName'].includes(key) && (String(value).trim() === '' || !Number.isFinite(Number(value)) || Number(value) < 0)) {
+      throw new Error('قيمة إعداد غير صالحة: ' + key);
+    }
+  }
+  db.transaction(() => {
+    for (const [key, value] of entries) setConfig(key, value);
+  })();
 }
 
 const DEFAULT_LIST_LIMIT = 100;
@@ -670,6 +667,7 @@ function getOrdersPage(options = {}) {
       o.unit_final_price AS unitFinalPrice,
       o.unit_total_cost AS unitTotalCost,
       o.unit_profit AS unitProfit,
+      o.created_at AS createdAt,
       o.payment_status AS paymentStatus,
       o.payment_method AS paymentMethod,
       o.paid_amount AS paidAmount
@@ -687,7 +685,7 @@ function getOrdersPage(options = {}) {
 function getOrderMaterials(code) {
   return db.prepare(`
     SELECT om.id AS rowId, om.material_id AS materialId, om.material_name AS materialName,
-      om.grams, om.price_per_gram AS pricePerGram, om.total_cost AS totalCost
+      om.grams, om.waste_grams AS wasteGrams, om.created_at AS createdAt, om.price_per_gram AS pricePerGram, om.total_cost AS totalCost
     FROM order_materials om
     JOIN orders o ON o.id = om.order_id
     WHERE o.code = ?
@@ -907,7 +905,7 @@ function getDashboardSummary() {
     SELECT
       COALESCE(SUM(CASE WHEN weight > 0 THEN remaining * (price / weight) ELSE 0 END), 0) AS value,
       COALESCE(SUM(remaining), 0) AS grams,
-      COALESCE(SUM(CASE WHEN remaining > 0 AND remaining <= low_stock_threshold THEN 1 ELSE 0 END), 0) AS lowCount
+      COALESCE(SUM(CASE WHEN remaining <= low_stock_threshold THEN 1 ELSE 0 END), 0) AS lowCount
     FROM materials
     WHERE is_archived = 0
   `).get();
@@ -978,6 +976,7 @@ function getDashboardData(options = {}) {
       p.hourly_depreciation AS hourlyDepreciation,
       p.notes,
       p.is_archived AS isArchived,
+      p.created_at AS createdAt,
       a.id AS purchaseAssetId,
       a.cost AS purchasePrice,
       a.depreciation_hours AS purchaseHours,
@@ -999,7 +998,8 @@ function getDashboardData(options = {}) {
       price,
       low_stock_threshold AS lowStockThreshold,
       supplier,
-      is_archived AS isArchived
+      is_archived AS isArchived,
+      created_at AS createdAt
     FROM materials
     WHERE is_archived = 0
     ORDER BY id DESC
@@ -1131,102 +1131,107 @@ function deletePrinter(id) {
 }
 
 function createMaterial(data) {
-  const stmt = db.prepare(`
-    INSERT INTO materials (name, type, color, weight, remaining, price, low_stock_threshold, supplier, is_archived)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
+  return db.transaction(() => {
+    const stmt = db.prepare(`
+      INSERT INTO materials (name, type, color, weight, remaining, price, low_stock_threshold, supplier, is_archived)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
 
-  const result = stmt.run(
-    String(data.name || '').trim(),
-    String(data.type || '').trim(),
-    String(data.color || '').trim(),
-    Number(data.weight || 0),
-    Number(data.remaining || 0),
-    Number(data.price || 0),
-    Number(data.lowStockThreshold || 0),
-    String(data.supplier || '').trim(),
-    0
-  );
+    const result = stmt.run(
+      String(data.name || '').trim(),
+      String(data.type || '').trim(),
+      String(data.color || '').trim(),
+      Number(data.weight || 0),
+      Number(data.remaining || 0),
+      Number(data.price || 0),
+      Number(data.lowStockThreshold || 0),
+      String(data.supplier || '').trim(),
+      0
+    );
 
-  const materialId = Number(result.lastInsertRowid);
+    const materialId = Number(result.lastInsertRowid);
+    if (Number(data.remaining || 0) <= 0) return materialId;
 
-  db.prepare(`
-    INSERT INTO stock_movements (material_id, material_name, movement_type, quantity, reason, reference_code)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    materialId,
-    String(data.name || '').trim(),
-    'in',
-    Number(data.remaining || 0),
-    'إضافة خامة جديدة',
-    ''
-  );
-
-  return materialId;
-}
-
-function updateMaterial(data) {
-  const materialId = Number(data.id);
-  const oldMaterial = db.prepare('SELECT * FROM materials WHERE id = ?').get(materialId);
-
-  if (!oldMaterial) return;
-
-  const newName = String(data.name || '').trim();
-  const newRemaining = Number(data.remaining || 0);
-
-  db.prepare(`
-    UPDATE materials
-    SET
-      name = ?,
-      type = ?,
-      color = ?,
-      weight = ?,
-      remaining = ?,
-      price = ?,
-      low_stock_threshold = ?,
-      supplier = ?
-    WHERE id = ?
-  `).run(
-    newName,
-    String(data.type || '').trim(),
-    String(data.color || '').trim(),
-    Number(data.weight || 0),
-    newRemaining,
-    Number(data.price || 0),
-    Number(data.lowStockThreshold || 0),
-    String(data.supplier || '').trim(),
-    materialId
-  );
-
-  if (String(oldMaterial.name || '') !== newName) {
-    db.prepare(`
-      UPDATE order_materials
-      SET material_name = ?
-      WHERE material_id = ?
-    `).run(newName, materialId);
-
-    db.prepare(`
-      UPDATE stock_movements
-      SET material_name = ?
-      WHERE material_id = ?
-    `).run(newName, materialId);
-  }
-
-  const difference = newRemaining - Number(oldMaterial.remaining || 0);
-
-  if (difference !== 0) {
     db.prepare(`
       INSERT INTO stock_movements (material_id, material_name, movement_type, quantity, reason, reference_code)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(
       materialId,
-      newName,
-      difference > 0 ? 'adjust_in' : 'adjust_out',
-      Math.abs(difference),
-      'تعديل يدوي على المخزون',
+      String(data.name || '').trim(),
+      'in',
+      Number(data.remaining || 0),
+      'إضافة خامة جديدة',
       ''
     );
-  }
+
+    return materialId;
+  })();
+}
+
+function updateMaterial(data) {
+  return db.transaction(() => {
+    const materialId = Number(data.id);
+    const oldMaterial = db.prepare('SELECT * FROM materials WHERE id = ?').get(materialId);
+
+    if (!oldMaterial) return;
+
+    const newName = String(data.name || '').trim();
+    const newRemaining = Number(data.remaining || 0);
+
+    db.prepare(`
+      UPDATE materials
+      SET
+        name = ?,
+        type = ?,
+        color = ?,
+        weight = ?,
+        remaining = ?,
+        price = ?,
+        low_stock_threshold = ?,
+        supplier = ?
+      WHERE id = ?
+    `).run(
+      newName,
+      String(data.type || '').trim(),
+      String(data.color || '').trim(),
+      Number(data.weight || 0),
+      newRemaining,
+      Number(data.price || 0),
+      Number(data.lowStockThreshold || 0),
+      String(data.supplier || '').trim(),
+      materialId
+    );
+
+    if (String(oldMaterial.name || '') !== newName) {
+      db.prepare(`
+        UPDATE order_materials
+        SET material_name = ?
+        WHERE material_id = ?
+      `).run(newName, materialId);
+
+      db.prepare(`
+        UPDATE stock_movements
+        SET material_name = ?
+        WHERE material_id = ?
+      `).run(newName, materialId);
+    }
+
+    const difference = newRemaining - Number(oldMaterial.remaining || 0);
+
+    if (difference !== 0) {
+      db.prepare(`
+        INSERT INTO stock_movements (material_id, material_name, movement_type, quantity, reason, reference_code)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        materialId,
+        newName,
+        difference > 0 ? 'adjust_in' : 'adjust_out',
+        Math.abs(difference),
+        'تعديل يدوي على المخزون',
+        ''
+      );
+    }
+  })();
 }
 
 function deleteMaterial(id) {
@@ -1352,7 +1357,7 @@ function createQuote(payload) {
     quoteCode,
     String(data.itemName || '').trim(),
     String(data.customerName || '').trim(),
-    String(data.date || new Date().toISOString().slice(0, 10)).trim(),
+    String(data.date || localDateString()).trim(),
     Number(data.finalPrice || 0),
     Number(data.profit || 0),
     Number(data.quantity || 1),
@@ -1365,6 +1370,20 @@ function createQuote(payload) {
 
 function deleteQuote(code) {
   db.prepare('DELETE FROM quotes WHERE code = ?').run(String(code || '').trim());
+}
+
+function applyOrderStockDelta(material, consumed, code, reason) {
+  if (Math.abs(consumed) <= STOCK_EPSILON) return;
+  const result = db.prepare(`
+    UPDATE materials
+    SET remaining = CASE WHEN ABS(remaining - ?) <= ? THEN 0 ELSE remaining - ? END
+    WHERE id = ? AND remaining >= ? - ?
+  `).run(consumed, STOCK_EPSILON, consumed, material.id, consumed, STOCK_EPSILON);
+  if (result.changes !== 1) throw new Error('المخزون غير كافٍ في: ' + material.name);
+  db.prepare(`
+    INSERT INTO stock_movements (material_id, material_name, movement_type, quantity, reason, reference_code)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(material.id, material.name, consumed > 0 ? 'out' : 'return', Math.abs(consumed), reason, code);
 }
 
 function insertOrderWithStock(data) {
@@ -1415,28 +1434,12 @@ function insertOrderWithStock(data) {
       material_id,
       material_name,
       grams,
+      waste_grams,
+      created_at,
       price_per_gram,
       total_cost
     )
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-
-  const updateMaterialStock = db.prepare(`
-    UPDATE materials
-    SET remaining = remaining - ?
-    WHERE id = ? AND remaining >= ? AND is_archived = 0
-  `);
-
-  const insertStockMovement = db.prepare(`
-    INSERT INTO stock_movements (
-      material_id,
-      material_name,
-      movement_type,
-      quantity,
-      reason,
-      reference_code
-    )
-    VALUES (?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
   `);
 
   if (!data || !String(data.code || '').trim()) {
@@ -1465,7 +1468,7 @@ function insertOrderWithStock(data) {
   }
 
   for (const item of data.materialUsage) {
-    if (Number(item.grams || 0) <= 0) {
+    if (!Number.isFinite(Number(item.grams)) || Number(item.grams) <= 0) {
       throw new Error('كمية الخامة لازم تكون أكبر من صفر');
     }
   }
@@ -1477,20 +1480,16 @@ function insertOrderWithStock(data) {
     throw new Error('كود الأوردر موجود بالفعل، حاول مرة أخرى');
   }
 
-  for (const item of data.materialUsage) {
-    const material = db.prepare('SELECT * FROM materials WHERE id = ?').get(Number(item.materialId));
-
-    if (!material) {
-      throw new Error(`الخامة غير موجودة: ${item.materialName}`);
-    }
-
-    if (Number(material.is_archived || 0) === 1) {
-      throw new Error(`الخامة مؤرشفة ولا يمكن استخدامها: ${item.materialName}`);
-    }
-
-    if (Number(material.remaining || 0) < Number(item.grams || 0)) {
-      throw new Error(`المخزون غير كافٍ في: ${item.materialName}`);
-    }
+  const usage = allocateWaste(data.materialUsage, data.wasteWeight);
+  const materials = new Map();
+  for (const item of usage) {
+    const material = db.prepare('SELECT id, name, remaining, is_archived FROM materials WHERE id = ?').get(Number(item.materialId));
+    if (!material) throw new Error('الخامة غير موجودة: ' + item.materialName);
+    if (material.is_archived) throw new Error('الخامة مؤرشفة ولا يمكن استخدامها: ' + item.materialName);
+    const entry = materials.get(material.id) || { ...material, consumed: 0 };
+    entry.consumed += Number(item.grams) + item.wasteGrams;
+    if (!stockCovers(material.remaining, entry.consumed)) throw new Error('المخزون غير كافٍ في: ' + material.name);
+    materials.set(material.id, entry);
   }
 
   if (data.printerId) {
@@ -1548,34 +1547,12 @@ function insertOrderWithStock(data) {
 
   const orderId = Number(orderResult.lastInsertRowid);
 
-  for (const item of data.materialUsage) {
-    const result = updateMaterialStock.run(
-      Number(item.grams || 0),
-      Number(item.materialId),
-      Number(item.grams || 0)
-    );
-
-    if (result.changes === 0) {
-      throw new Error(`تعذر خصم المخزون من: ${item.materialName}`);
-    }
-
-    insertMaterialUsage.run(
-      orderId,
-      Number(item.materialId),
-      String(item.materialName || '').trim(),
-      Number(item.grams || 0),
-      Number(item.pricePerGram || 0),
-      Number(item.totalCost || 0)
-    );
-
-    insertStockMovement.run(
-      Number(item.materialId),
-      String(item.materialName || '').trim(),
-      'out',
-      Number(item.grams || 0),
-      'استهلاك في أوردر',
-      cleanCode
-    );
+  for (const material of materials.values()) {
+    applyOrderStockDelta(material, material.consumed, cleanCode, 'استهلاك في أوردر');
+  }
+  for (const item of usage) {
+    insertMaterialUsage.run(orderId, Number(item.materialId), String(item.materialName || '').trim(),
+      Number(item.grams), item.wasteGrams, Number(item.pricePerGram || 0), Number(item.totalCost || 0));
   }
 
   const codeNumber = Number(String(cleanCode).replace(/^ORD-/, ''));
@@ -1600,7 +1577,7 @@ function convertQuoteToOrder(quoteCode, orderCode) {
     catch (_) { throw new Error('بيانات عرض السعر غير صالحة'); }
 
     payload.code = generateUniqueOrderCode(orderCode);
-    payload.date = new Date().toISOString().slice(0, 10);
+    payload.date = localDateString();
     payload.status = 'delivered';
 
     insertOrderWithStock(payload);
@@ -1690,130 +1667,43 @@ function updateOrder(payload) {
         throw new Error('خامات الأوردر اتعدّلت. افتح الأوردر من جديد قبل الحفظ.');
       }
 
-      const oldGrams = new Map();
+      const before = new Map();
+      const after = new Map();
       const unlinkedRows = new Map();
       for (const item of oldMaterials) {
-        if (item.materialId) oldGrams.set(item.materialId, (oldGrams.get(item.materialId) || 0) + item.grams);
+        if (item.materialId) before.set(item.materialId, (before.get(item.materialId) || 0) + item.grams + (item.wasteGrams || 0));
         else unlinkedRows.set(item.rowId, item);
       }
-      const keptUnlinkedRows = new Set(data.materialUsage.map((item) => item.preserveRowId).filter(Boolean));
-
-      for (const item of oldMaterials) {
-        if (!item.materialId && keptUnlinkedRows.has(item.rowId)) continue;
-        if (item.materialId) {
-          db.prepare(`
-            UPDATE materials
-            SET remaining = remaining + ?
-            WHERE id = ?
-          `).run(Number(item.grams || 0), Number(item.materialId));
-        }
-
-        db.prepare(`
-          INSERT INTO stock_movements (
-            material_id,
-            material_name,
-            movement_type,
-            quantity,
-            reason,
-            reference_code
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          item.materialId ? Number(item.materialId) : null,
-          String(item.materialName || '').trim(),
-          'return',
-          Number(item.grams || 0),
-          'استرجاع قبل تعديل أوردر',
-          String(existingOrder.code || '').trim()
-        );
+      const linked = data.materialUsage.filter((item) => !item.preserveRowId);
+      const hasTrackedWaste = oldMaterials.some((item) => item.wasteGrams != null);
+      const preservedWaste = data.materialUsage.reduce((sum, item) =>
+        sum + (unlinkedRows.get(item.preserveRowId)?.wasteGrams || 0), 0);
+      const waste = hasTrackedWaste ? Math.max(0, Number(data.wasteWeight || 0) - preservedWaste) : 0;
+      const usage = allocateWaste(linked, waste);
+      for (const item of usage) {
+        if (!Number.isFinite(Number(item.grams)) || Number(item.grams) <= 0) throw new Error('كمية الخامة لازم تكون أكبر من صفر');
+        const id = Number(item.materialId);
+        after.set(id, (after.get(id) || 0) + Number(item.grams) + item.wasteGrams);
       }
-
+      for (const id of new Set([...before.keys(), ...after.keys()])) {
+        const material = db.prepare('SELECT id, name, is_archived FROM materials WHERE id = ?').get(id);
+        if (!material) throw new Error('الخامة غير موجودة');
+        const delta = (after.get(id) || 0) - (before.get(id) || 0);
+        if (material.is_archived && delta > STOCK_EPSILON) throw new Error('لا يمكن زيادة استهلاك خامة مؤرشفة: ' + material.name);
+        applyOrderStockDelta(material, delta, code, delta < 0 ? 'استرجاع قبل تعديل أوردر' : 'استهلاك بعد تعديل أوردر');
+      }
       db.prepare('DELETE FROM order_materials WHERE order_id = ?').run(existingOrder.id);
-
-      for (const item of data.materialUsage) {
-        if (item.preserveRowId) {
-          const old = unlinkedRows.get(item.preserveRowId);
-          if (!old) throw new Error('خامة قديمة غير موجودة في هذا الأوردر');
-          unlinkedRows.delete(item.preserveRowId);
-          db.prepare(`
-            INSERT INTO order_materials (order_id, material_id, material_name, grams, price_per_gram, total_cost)
-            VALUES (?, NULL, ?, ?, ?, ?)
-          `).run(existingOrder.id, old.materialName, old.grams, old.pricePerGram, old.totalCost);
-          continue;
-        }
-        if (Number(item.grams || 0) <= 0) {
-          throw new Error('كمية الخامة لازم تكون أكبر من صفر');
-        }
-
-        const material = db.prepare('SELECT * FROM materials WHERE id = ?').get(Number(item.materialId));
-
-        if (!material) {
-          throw new Error(`الخامة غير موجودة: ${item.materialName}`);
-        }
-
-        const isArchived = Number(material.is_archived || 0) === 1;
-        if (isArchived) {
-          const remainingOldGrams = (oldGrams.get(material.id) || 0) - Number(item.grams);
-          if (remainingOldGrams < 0) throw new Error(`لا يمكن زيادة استهلاك خامة مؤرشفة: ${item.materialName}`);
-          oldGrams.set(material.id, remainingOldGrams);
-        }
-
-        if (Number(material.remaining || 0) < Number(item.grams || 0)) {
-          throw new Error(`المخزون غير كافٍ في: ${item.materialName}`);
-        }
-
-        const result = db.prepare(`
-          UPDATE materials
-          SET remaining = remaining - ?
-          WHERE id = ? AND remaining >= ? AND is_archived = ?
-        `).run(
-          Number(item.grams || 0),
-          Number(item.materialId),
-          Number(item.grams || 0),
-          isArchived ? 1 : 0
-        );
-
-        if (result.changes === 0) {
-          throw new Error(`تعذر خصم المخزون من: ${item.materialName}`);
-        }
-
-        db.prepare(`
-          INSERT INTO order_materials (
-            order_id,
-            material_id,
-            material_name,
-            grams,
-            price_per_gram,
-            total_cost
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          existingOrder.id,
-          Number(item.materialId),
-          String(item.materialName || '').trim(),
-          Number(item.grams || 0),
-          Number(item.pricePerGram || 0),
-          Number(item.totalCost || 0)
-        );
-
-        db.prepare(`
-          INSERT INTO stock_movements (
-            material_id,
-            material_name,
-            movement_type,
-            quantity,
-            reason,
-            reference_code
-          )
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          Number(item.materialId),
-          String(item.materialName || '').trim(),
-          'out',
-          Number(item.grams || 0),
-          'استهلاك بعد تعديل أوردر',
-          String(existingOrder.code || '').trim()
-        );
+      const insertUsage = db.prepare(`
+        INSERT INTO order_materials (order_id, material_id, material_name, grams, waste_grams, price_per_gram, total_cost, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      `);
+      let linkedIndex = 0;
+      for (const requested of data.materialUsage) {
+        const row = requested.preserveRowId ? unlinkedRows.get(requested.preserveRowId) : usage[linkedIndex++];
+        if (!row) throw new Error('خامة قديمة غير موجودة في هذا الأوردر');
+        if (requested.preserveRowId) unlinkedRows.delete(requested.preserveRowId);
+        insertUsage.run(existingOrder.id, row.materialId ? Number(row.materialId) : null, String(row.materialName || '').trim(),
+          Number(row.grams), hasTrackedWaste ? row.wasteGrams : null, Number(row.pricePerGram || 0), Number(row.totalCost || 0), row.createdAt ?? null);
       }
     }
 
@@ -1909,9 +1799,9 @@ function updateOrder(payload) {
       Number(data.unitFinalPrice || (finalPrice / quantity)),
       Number(data.unitTotalCost || (Number(data.totalCost || 0) / quantity)),
       Number(data.unitProfit || (Number(data.profit || 0) / quantity)),
-      keepRecordedPrice ? existingOrder.paymentStatus : 'collected',
-      keepRecordedPrice ? existingOrder.paymentMethod : 'cash',
-      keepRecordedPrice ? existingOrder.paidAmount : finalPrice,
+      (keepRecordedPrice || existingOrder.paymentStatus !== 'collected') ? existingOrder.paymentStatus : 'collected',
+      existingOrder.paymentMethod,
+      (keepRecordedPrice || existingOrder.paymentStatus !== 'collected') ? existingOrder.paidAmount : finalPrice,
       code
     );
   });
@@ -1925,32 +1815,9 @@ function deleteOrder(code) {
     if (!order) return;
     const materials = getOrderMaterials(order.code);
     for (const item of materials) {
-      if (item.materialId) {
-        db.prepare(`
-          UPDATE materials
-          SET remaining = remaining + ?
-          WHERE id = ?
-        `).run(Number(item.grams || 0), Number(item.materialId));
-      }
-
-      db.prepare(`
-        INSERT INTO stock_movements (
-          material_id,
-          material_name,
-          movement_type,
-          quantity,
-          reason,
-          reference_code
-        )
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        item.materialId ? Number(item.materialId) : null,
-        String(item.materialName || '').trim(),
-        'return',
-        Number(item.grams || 0),
-        'استرجاع بعد حذف أوردر',
-        String(order.code || '').trim()
-      );
+      if (!item.materialId) continue;
+      applyOrderStockDelta({ id: item.materialId, name: item.materialName },
+        -(item.grams + (item.wasteGrams || 0)), order.code, 'استرجاع بعد حذف أوردر');
     }
 
     db.prepare('DELETE FROM order_materials WHERE order_id = ?').run(order.id);
@@ -1999,19 +1866,19 @@ function createMaterialFromPurchase(data) {
   return Number(result.lastInsertRowid);
 }
 
-function applyPurchaseStockDelta(data, direction, referenceCode, reason) {
-  const grams = getPurchaseStockGrams(data);
+function applyPurchaseStockDelta(data, direction, referenceCode, reason, grams = getPurchaseStockGrams(data)) {
   const materialId = getPurchaseMaterialId(data);
-  if (!grams || !materialId) return;
+  if (grams <= STOCK_EPSILON || !materialId) return;
 
   const material = db.prepare('SELECT id, name, remaining FROM materials WHERE id = ?').get(materialId);
   if (!material) throw new Error('الخامة المرتبطة بالمشتريات غير موجودة');
 
-  if (direction < 0 && Number(material.remaining || 0) < grams) {
+  if (direction < 0 && !stockCovers(material.remaining, grams)) {
     throw new Error(`لا يمكن حذف/تعديل المشتريات لأن المتبقي في ${material.name} أقل من الكمية المطلوب خصمها`);
   }
 
-  db.prepare('UPDATE materials SET remaining = remaining + ? WHERE id = ?').run(Number(direction) * grams, materialId);
+  const remaining = material.remaining + direction * grams;
+  db.prepare('UPDATE materials SET remaining = ? WHERE id = ?').run(Math.abs(remaining) <= STOCK_EPSILON ? 0 : remaining, materialId);
 
   db.prepare(`
     INSERT INTO stock_movements (material_id, material_name, movement_type, quantity, reason, reference_code)
@@ -2034,7 +1901,7 @@ function savePurchase(payload) {
   const shouldCreateMaterial = category === 'خامات' && Boolean(data.createMaterial) && !materialId;
   const clean = {
     id: id > 0 ? id : null,
-    date: String(data.date || new Date().toISOString().slice(0, 10)).trim(),
+    date: String(data.date || localDateString()).trim(),
     category,
     item: String(data.item || '').trim(),
     quantity: Math.max(0, Number(data.quantity || 0)),
@@ -2062,8 +1929,6 @@ function savePurchase(payload) {
       `).get(clean.id);
       if (!old) throw new Error('المشتريات غير موجودة');
 
-      applyPurchaseStockDelta(old, -1, `PUR-${clean.id}`, 'استرجاع مخزون قبل تعديل مشتريات');
-
       if (clean.createMaterial) {
         clean.materialId = createMaterialFromPurchase(clean);
       }
@@ -2074,7 +1939,14 @@ function savePurchase(payload) {
         WHERE id = ?
       `).run(clean.date, clean.category, clean.item, clean.quantity, clean.gramsPerUnit, clean.amount, clean.supplier, clean.notes, clean.materialId, clean.id);
 
-      applyPurchaseStockDelta(clean, 1, `PUR-${clean.id}`, 'إضافة مخزون بعد تعديل مشتريات');
+      const reference = 'PUR-' + clean.id;
+      if (getPurchaseMaterialId(old) === getPurchaseMaterialId(clean)) {
+        const delta = getPurchaseStockGrams(clean) - getPurchaseStockGrams(old);
+        applyPurchaseStockDelta(clean, Math.sign(delta), reference, 'فرق مخزون بعد تعديل مشتريات', Math.abs(delta));
+      } else {
+        applyPurchaseStockDelta(old, -1, reference, 'استرجاع مخزون قبل تعديل مشتريات');
+        applyPurchaseStockDelta(clean, 1, reference, 'إضافة مخزون بعد تعديل مشتريات');
+      }
       return clean.id;
     }
 
@@ -2119,7 +1991,7 @@ function saveAsset(payload) {
   const id = Number(data.id || 0);
   const clean = {
     id: id > 0 ? id : null,
-    date: String(data.date || new Date().toISOString().slice(0, 10)).trim(),
+    date: String(data.date || localDateString()).trim(),
     item: String(data.item || '').trim(),
     cost: Math.max(0, Number(data.cost || 0)),
     type: String(data.type || '').trim(),
@@ -2184,13 +2056,13 @@ function replaceAllData(data) {
     `);
 
     const insertPrinter = db.prepare(`
-      INSERT INTO printers (name, model, status, hourly_depreciation, notes, is_archived)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO printers (name, model, status, hourly_depreciation, notes, is_archived, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertMaterial = db.prepare(`
-      INSERT INTO materials (name, type, color, weight, remaining, price, low_stock_threshold, supplier, is_archived)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO materials (name, type, color, weight, remaining, price, low_stock_threshold, supplier, is_archived, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertOrder = db.prepare(`
@@ -2229,9 +2101,10 @@ function replaceAllData(data) {
         unit_profit,
         payment_status,
         payment_method,
-        paid_amount
+        paid_amount,
+        created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertMovement = db.prepare(`
@@ -2241,9 +2114,10 @@ function replaceAllData(data) {
         movement_type,
         quantity,
         reason,
-        reference_code
+        reference_code,
+        created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertOrderMaterial = db.prepare(`
@@ -2253,24 +2127,26 @@ function replaceAllData(data) {
         material_name,
         grams,
         price_per_gram,
-        total_cost
+        total_cost,
+        waste_grams,
+        created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertQuote = db.prepare(`
-      INSERT INTO quotes (code, item_name, customer_name, quote_date, final_price, profit, quantity, status, payload_json, converted_order_code)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO quotes (code, item_name, customer_name, quote_date, final_price, profit, quantity, status, payload_json, converted_order_code, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertPurchase = db.prepare(`
-      INSERT INTO purchases (purchase_date, category, item, quantity, grams_per_unit, amount, supplier, notes, material_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO purchases (purchase_date, category, item, quantity, grams_per_unit, amount, supplier, notes, material_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     const insertAsset = db.prepare(`
-      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes, printer_id, hourly_depreciation_override)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO assets (asset_date, item, cost, asset_type, depreciation_hours, notes, printer_id, hourly_depreciation_override, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
     `);
 
     Object.entries(payload.config || {}).forEach(([key, value]) => {
@@ -2295,7 +2171,8 @@ function replaceAllData(data) {
         String(printer.status || 'idle').trim(),
         Number(printer.hourlyDepreciation || 0),
         String(printer.notes || '').trim(),
-        Number(printer.isArchived ? 1 : 0)
+        Number(printer.isArchived ? 1 : 0),
+        printer.createdAt ?? null
       );
 
       if (printer.id != null) {
@@ -2313,7 +2190,8 @@ function replaceAllData(data) {
         Number(material.price || 0),
         Number(material.lowStockThreshold || 0),
         String(material.supplier || '').trim(),
-        Number(material.isArchived ? 1 : 0)
+        Number(material.isArchived ? 1 : 0),
+        material.createdAt ?? null
       );
 
       if (material.id != null) {
@@ -2351,19 +2229,20 @@ function replaceAllData(data) {
         Number(order.riskCost || 0),
         Number(order.taxCost || 0),
         Number(order.totalCost || 0),
-        Number(order.priceBeforeDiscount || finalPrice),
+        Number(order.priceBeforeDiscount ?? finalPrice),
         Number(order.discountValue || 0),
-        Number(order.priceAfterDiscount || finalPrice),
+        Number(order.priceAfterDiscount ?? finalPrice),
         Number(order.minimumOrderPrice || 0),
         Number(order.roundedAdjustment || 0),
         finalPrice,
         Number(order.profit || 0),
-        Number(order.unitFinalPrice || (finalPrice / Math.max(1, Number(order.quantity || 1)))),
-        Number(order.unitTotalCost || (Number(order.totalCost || 0) / Math.max(1, Number(order.quantity || 1)))),
-        Number(order.unitProfit || (Number(order.profit || 0) / Math.max(1, Number(order.quantity || 1)))),
-        'collected',
-        'cash',
-        finalPrice
+        Number(order.unitFinalPrice ?? (finalPrice / Math.max(1, Number(order.quantity || 1)))),
+        Number(order.unitTotalCost ?? (Number(order.totalCost || 0) / Math.max(1, Number(order.quantity || 1)))),
+        Number(order.unitProfit ?? (Number(order.profit || 0) / Math.max(1, Number(order.quantity || 1)))),
+        String(order.paymentStatus ?? 'collected'),
+        String(order.paymentMethod ?? 'cash'),
+        Number(order.paidAmount ?? (order.paymentStatus == null || order.paymentStatus === 'collected' ? finalPrice : 0)),
+        order.createdAt ?? null
       );
 
       if (order.id != null) {
@@ -2386,7 +2265,9 @@ function replaceAllData(data) {
         String(item.materialName || '').trim(),
         Number(item.grams || 0),
         Number(item.pricePerGram || 0),
-        Number(item.totalCost || 0)
+        Number(item.totalCost || 0),
+        item.wasteGrams == null ? null : Number(item.wasteGrams),
+        item.createdAt ?? null
       );
     });
 
@@ -2401,7 +2282,8 @@ function replaceAllData(data) {
         String(movement.movementType || 'adjust_in').trim(),
         Number(movement.quantity || 0),
         String(movement.reason || '').trim(),
-        String(movement.referenceCode || '').trim()
+        String(movement.referenceCode || '').trim(),
+        movement.createdAt ?? null
       );
     });
 
@@ -2411,7 +2293,7 @@ function replaceAllData(data) {
         : null;
 
       insertPurchase.run(
-        String(purchase.date || new Date().toISOString().slice(0, 10)).trim(),
+        String(purchase.date || localDateString()).trim(),
         String(purchase.category || 'أخرى').trim(),
         String(purchase.item || '').trim(),
         Number(purchase.quantity || 0),
@@ -2419,20 +2301,22 @@ function replaceAllData(data) {
         Number(purchase.amount || 0),
         String(purchase.supplier || '').trim(),
         String(purchase.notes || '').trim(),
-        mappedMaterialId
+        mappedMaterialId,
+        purchase.createdAt ?? null
       );
     });
 
     (payload.assets || []).forEach((asset) => {
       insertAsset.run(
-        String(asset.date || new Date().toISOString().slice(0, 10)).trim(),
+        String(asset.date || localDateString()).trim(),
         String(asset.item || '').trim(),
         Number(asset.cost || 0),
         String(asset.type || '').trim(),
         Number(asset.depreciationHours || 0),
         String(asset.notes || '').trim(),
         printerIdMap.get(Number(asset.printerId)) ?? null,
-        asset.hourlyDepreciationOverride == null ? null : Number(asset.hourlyDepreciationOverride)
+        asset.hourlyDepreciationOverride == null ? null : Number(asset.hourlyDepreciationOverride),
+        asset.createdAt ?? null
       );
     });
 
@@ -2451,13 +2335,14 @@ function replaceAllData(data) {
         String(quote.code || '').trim(),
         String(quote.itemName || '').trim(),
         String(quote.customerName || '').trim(),
-        String(quote.date || new Date().toISOString().slice(0, 10)).trim(),
+        String(quote.date || localDateString()).trim(),
         Number(quote.finalPrice || 0),
         Number(quote.profit || 0),
         Number(quote.quantity || 1),
         String(quote.status || 'open').trim(),
         payloadJson,
-        String(quote.convertedOrderCode || '').trim()
+        String(quote.convertedOrderCode || '').trim(),
+        quote.createdAt ?? null
       );
     });
 
@@ -2521,6 +2406,8 @@ function exportBackupData() {
       material_id AS materialId,
       material_name AS materialName,
       grams,
+      waste_grams AS wasteGrams,
+      created_at AS createdAt,
       price_per_gram AS pricePerGram,
       total_cost AS totalCost
     FROM order_materials
@@ -2535,7 +2422,8 @@ function exportBackupData() {
       status,
       hourly_depreciation AS hourlyDepreciation,
       notes,
-      is_archived AS isArchived
+      is_archived AS isArchived,
+      created_at AS createdAt
     FROM printers
     WHERE is_archived = 1
     ORDER BY id DESC
@@ -2552,7 +2440,8 @@ function exportBackupData() {
       price,
       low_stock_threshold AS lowStockThreshold,
       supplier,
-      is_archived AS isArchived
+      is_archived AS isArchived,
+      created_at AS createdAt
     FROM materials
     WHERE is_archived = 1
     ORDER BY id DESC
@@ -2575,7 +2464,7 @@ function exportBackupData() {
   return {
     exportedAt: new Date().toISOString(),
     appName: 'MOO3DSTUDIO',
-    schemaVersion: 9,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
     ...data,
     printers: [...data.printers, ...archivedPrinters],
     materials: [...data.materials, ...archivedMaterials],
@@ -2585,6 +2474,7 @@ function exportBackupData() {
 }
 
 module.exports = {
+  BACKUP_SCHEMA_VERSION,
   getDb,
   getDatabasePath,
   getDashboardData,
@@ -2596,6 +2486,7 @@ module.exports = {
   getNextQuoteCode,
   generateUniqueOrderCode,
   setConfig,
+  saveUserConfig,
   createPrinter,
   savePrinterWithAsset,
   updatePrinter,

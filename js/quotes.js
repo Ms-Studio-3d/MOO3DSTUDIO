@@ -34,25 +34,25 @@ function renderQuotes() {
         <div class="pipeline-meta">
           <div>العميل: ${escapeHtml(quote.customerName || '-')}</div>
           <div>التاريخ: ${escapeHtml(quote.date || '-')}</div>
-          <div>عدد القطع: ${formatNumber(quote.quantity || 1)}</div>
+          <div>عدد القطع: ${csvNumber(quote.quantity || 1)}</div>
           ${converted ? `<div>الأوردر: ${escapeHtml(quote.convertedOrderCode || '-')}</div>` : ''}
         </div>
 
         <div class="pipeline-price">
-          <strong>السعر: ${formatMoney(quote.finalPrice || 0)}</strong>
-          <span>الربح: ${formatMoney(quote.profit || 0)}</span>
+          <strong>السعر: ${formatMoneyHtml(quote.finalPrice || 0)}</strong>
+          <span>الربح: ${formatMoneyHtml(quote.profit || 0)}</span>
         </div>
 
         <div class="pipeline-actions">
-          ${converted ? '' : `<button class="action-btn edit" type="button" onclick="convertQuoteToOrder(${codeArg})">تحويل لأوردر</button>`}
-          <button class="action-btn delete" type="button" onclick="deleteQuoteAction(${codeArg})">حذف</button>
+          ${converted ? '' : `<button class="action-btn edit" type="button" data-action-click="convertQuoteToOrder" data-arg-click="${codeArg}">تحويل لأوردر</button>`}
+          <button class="action-btn delete" type="button" data-action-click="deleteQuoteAction" data-arg-click="${codeArg}">حذف</button>
         </div>
       </article>
     `;
   }).join('');
 
   const moreButton = dashboardData.meta?.quotes?.hasMore
-    ? `<button class="btn btn-secondary btn-small" type="button" onclick="loadMoreQuotes()">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.quotes?.total || quotes.length) - quotes.length)})</button>`
+    ? `<button class="btn btn-secondary btn-small" type="button" data-action-click="loadMoreQuotes">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.quotes?.total || quotes.length) - quotes.length)})</button>`
     : '';
 
   target.innerHTML = cardsHtml + moreButton;
@@ -122,16 +122,18 @@ async function deleteQuoteAction(code) {
   }
 }
 
-function exportQuotesCSV() {
+async function exportQuotesCSV() {
+  const response = await window.farmAPI.getDataPage('quotes', { includeAll: true });
+  if (!response?.success) return showToast(response?.message || 'تعذر تصدير العروض', 'error');
   const headers = ['الكود', 'التاريخ', 'المجسم', 'العميل', 'عدد القطع', 'السعر', 'الربح', 'الحالة', 'الأوردر'];
-  const rows = getSortedQuotes().map((quote) => [
+  const rows = response.data.items.map((quote) => [
     quote.code,
     quote.date,
     quote.itemName,
     quote.customerName,
-    formatNumber(quote.quantity || 1),
-    formatNumber(quote.finalPrice || 0),
-    formatNumber(quote.profit || 0),
+    csvNumber(quote.quantity || 1),
+    csvNumber(quote.finalPrice || 0),
+    csvNumber(quote.profit || 0),
     getQuoteStatusText(quote.status),
     quote.convertedOrderCode || ''
   ]);
@@ -140,5 +142,5 @@ function exportQuotesCSV() {
     .map((row) => row.map(csvEscape).join(','))
     .join('\n');
 
-  downloadTextFile(`quotes-${new Date().toISOString().slice(0, 10)}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
+  downloadTextFile(`quotes-${localDateString()}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
 }

@@ -28,7 +28,7 @@ function renderInventory() {
         <div class="stock-item ${isLow ? 'low' : ''}">
           <div class="stock-header">
             <span>${escapeHtml(material.name)}</span>
-            <span>${remaining.toFixed(0)}g / ${weight.toFixed(0)}g</span>
+            <span>${stockWeightText(remaining)}g / ${weight.toFixed(0)}g</span>
           </div>
 
           <div class="stock-bar">
@@ -38,14 +38,14 @@ function renderInventory() {
           <div class="list-card-body stock-details">
             <div>النوع: ${escapeHtml(material.type || '-')}</div>
             <div>اللون: ${escapeHtml(material.color || '-')}</div>
-            <div>السعر: ${formatMoney(material.price || 0)}</div>
+            <div>السعر: ${formatMoneyHtml(material.price || 0)}</div>
             <div>حد التنبيه: ${toPositiveNumber(material.lowStockThreshold, 0).toFixed(0)}g</div>
             <div>المورد: ${escapeHtml(material.supplier || '-')}</div>
           </div>
 
           <div class="inline-actions card-actions">
-            <button class="btn btn-secondary" type="button" onclick="editMaterial(${materialId})">تعديل</button>
-            <button class="btn btn-danger" type="button" onclick="deleteMaterialAction(${materialId})">حذف</button>
+            <button class="btn btn-secondary" type="button" data-action-click="editMaterial" data-arg-click="${materialId}">تعديل</button>
+            <button class="btn btn-danger" type="button" data-action-click="deleteMaterialAction" data-arg-click="${materialId}">حذف</button>
           </div>
         </div>
       `;
@@ -98,7 +98,7 @@ function renderMaterialUsageInputs() {
   const optionsHtml = unusedMaterials.map((material) => {
     const remaining = toPositiveNumber(material.remaining, 0);
     const color = material.color ? ` • ${material.color}` : '';
-    return `<option value="${Number(material.id)}">${escapeHtml(material.name)}${escapeHtml(color)} — المتبقي ${remaining.toFixed(0)}g</option>`;
+    return `<option value="${Number(material.id)}">${escapeHtml(material.name)}${escapeHtml(color)} — المتبقي ${stockWeightText(remaining)}g</option>`;
   }).join('');
 
   const rowsHtml = selectedOrderMaterialIds.map((id) => {
@@ -108,7 +108,7 @@ function renderMaterialUsageInputs() {
     const materialId = Number(material.id);
     const remaining = toPositiveNumber(material.remaining, 0);
     const isLow = remaining <= Number(material.lowStockThreshold || 0);
-    const meta = `${material.type || '-'} • ${material.color || '-'} • المتبقي ${remaining.toFixed(0)}g`;
+    const meta = `${material.type || '-'} • ${material.color || '-'} • المتبقي ${stockWeightText(remaining)}g`;
     const oldValue = previousValues[String(materialId)] || '';
 
     return `
@@ -129,7 +129,7 @@ function renderMaterialUsageInputs() {
 
         <span class="material-used-chip">${escapeHtml(oldValue || '0')} مستخدم</span>
 
-        <button class="material-remove-btn" type="button" onclick="removeMaterialUsageRow('${materialId}')" aria-label="حذف الخامة">×</button>
+        <button class="material-remove-btn" type="button" data-action-click="removeMaterialUsageRow" data-arg-click="${materialId}" aria-label="حذف الخامة">×</button>
       </div>
     `;
   }).join('');
@@ -140,7 +140,7 @@ function renderMaterialUsageInputs() {
         <option value="">اختار خامة من المخزن...</option>
         ${optionsHtml}
       </select>
-      <button class="btn btn-primary add-material-btn" type="button" onclick="addMaterialUsageRow()" ${unusedMaterials.length ? '' : 'disabled'}>+ إضافة خامة</button>
+      <button class="btn btn-primary add-material-btn" type="button" data-action-click="addMaterialUsageRow" ${unusedMaterials.length ? '' : 'disabled'}>+ إضافة خامة</button>
       <span class="materials-count-pill">${materials.length} خامة متاحة</span>
     </div>
 

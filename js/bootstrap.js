@@ -68,7 +68,7 @@ function bindImportInput() {
 }
 
 function initializeDates() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString();
 
   if ($('opDate') && !getValue('opDate')) {
     setValue('opDate', today);

@@ -3,12 +3,13 @@ function $(id) {
 }
 
 function normalizeDigits(value) {
-  return String(value ?? '')
-    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d))
-    .replace(/[٫]/g, '.')
-    .replace(/[٬]/g, '')
-    .replace(/,/g, '.')
-    .trim();
+  let text = String(value ?? '').trim()
+    .replace(/[٠-٩]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'.indexOf(digit))
+    .replace(/[۰-۹]/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(digit))
+    .replace(/٫/g, '.').replace(/٬/g, ',');
+  if (/^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(text)) return text.replace(/,/g, '');
+  if (/^[+-]?(?:\d+,\d+|,\d+)$/.test(text)) text = text.replace(',', '.');
+  return text;
 }
 
 function toNumber(value, fallback = 0) {
@@ -28,16 +29,10 @@ function roundMoney(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 
-function roundUpToNearest5(value) {
-  const safeValue = Math.max(0, Number(value || 0));
-  const step = Math.max(1, toPositiveNumber(dashboardData.config.roundingStep, DEFAULT_CONFIG.roundingStep));
-  return Math.ceil(safeValue / step) * step;
-}
-
 function escapeHtml(value) {
-  const div = document.createElement('div');
-  div.textContent = String(value ?? '');
-  return div.innerHTML;
+  return String(value ?? '').replace(/[&<>"\']/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[char]);
 }
 
 function jsStringArg(value) {
@@ -59,6 +54,10 @@ function getCurrency() {
 
 function formatMoney(value) {
   return `${Number(value || 0).toFixed(2)} ${getCurrency()}`;
+}
+
+function formatMoneyHtml(value) {
+  return escapeHtml(formatMoney(value));
 }
 
 function formatNumber(value) {

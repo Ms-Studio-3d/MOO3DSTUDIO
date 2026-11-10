@@ -23,17 +23,18 @@
     "dist:win": "electron-builder --win nsis --publish never",
     "dist:installer": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "test": "node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js",
-    "test:stability": "node tests/stability.test.js"
+    "test": "node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js && node tests/review-regressions.test.js",
+    "test:stability": "node tests/stability.test.js",
+    "setup:electron": "node node_modules/electron/install.js"
   },
   "dependencies": {
-    "@xmldom/xmldom": "0.9.10",
-    "better-sqlite3": "11.8.1",
+    "@xmldom/xmldom": "0.9.12",
+    "better-sqlite3": "13.0.3",
     "jszip": "3.10.1"
   },
   "devDependencies": {
-    "electron": "31.0.2",
-    "electron-builder": "24.13.3"
+    "electron": "45.2.3",
+    "electron-builder": "26.18.1"
   },
   "build": {
     "appId": "com.msstudio3d.moo3dstudio",
@@ -85,7 +86,9 @@
         }
       ],
       "icon": "build/icon.ico",
-      "publisherName": "Ms-Studio-3d"
+      "signtoolOptions": {
+        "publisherName": "Ms-Studio-3d"
+      }
     },
     "nsis": {
       "oneClick": false,
@@ -105,7 +108,11 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
       "node_modules/**/*.node"
-    ]
+    ],
+    "npmRebuild": false
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "overrides": {
+    "minimatch@>=7.0.0 <11.0.1": "11.0.1"
+  }
 }

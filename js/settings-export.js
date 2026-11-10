@@ -38,7 +38,7 @@ async function saveSettings() {
 function openSettingsModal() {
   setActiveNav('settings');
   closeMainPanels();
-  applyConfigToInputs();
+  applyConfigToInputs({ includeOrder: false });
   openModal('settingsModal');
 }
 
@@ -48,12 +48,17 @@ function closeSettingsModal() {
 }
 
 function csvEscape(value) {
-  const text = String(value ?? '');
+  let text = String(value ?? '');
+  if (typeof value === 'string' && /^(?:\s*[=+@\-＝＋＠－]|[\t\r\n])/.test(text)) text = "'" + text;
   if (/[",\n\r]/.test(text)) {
     return `"${text.replace(/"/g, '""')}"`;
   }
 
   return text;
+}
+
+function csvNumber(value) {
+  return Number(formatNumber(value));
 }
 
 function downloadTextFile(filename, content, mimeType = 'text/plain;charset=utf-8') {
@@ -72,8 +77,11 @@ function downloadTextFile(filename, content, mimeType = 'text/plain;charset=utf-
   }, 0);
 }
 
-function exportSalesCSV() {
-  const orders = typeof getFilteredOrders === 'function' ? getFilteredOrders() : getSortedOrders();
+async function exportSalesCSV() {
+  const filters = isModalOpen('pipelineModal') ? getPipelineFilters() : getReportsFilters();
+  const response = await window.farmAPI.getDataPage('orders', { includeAll: true, filters });
+  if (!response?.success) return showToast(response?.message || 'تعذر تصدير المبيعات', 'error');
+  const orders = response.data.items;
 
   const headers = [
     'الكود',
@@ -114,30 +122,30 @@ function exportSalesCSV() {
     order.itemName,
     order.customerName,
     order.printerName,
-    formatNumber(order.quantity || 1),
+    csvNumber(order.quantity || 1),
     formatHoursMinutes(order.printHours || 0),
-    formatNumber(order.printHours),
-    formatNumber(order.manualMinutes),
-    formatNumber(order.materialCost),
-    formatNumber(order.wasteWeight),
-    formatNumber(order.wasteCost),
-    formatNumber(order.depreciationCost),
-    formatNumber(order.electricityCost),
-    formatNumber(order.laborCost),
-    formatNumber(order.packagingCost),
-    formatNumber(order.accessoriesCost || 0),
-    formatNumber(order.shippingCost),
-    formatNumber(order.riskCost),
-    formatNumber(order.taxCost),
-    formatNumber(order.totalCost),
-    formatNumber(order.priceBeforeDiscount),
-    formatNumber(order.discountValue),
-    formatNumber(order.priceAfterDiscount),
-    formatNumber(order.minimumOrderPrice),
-    formatNumber(order.roundedAdjustment),
-    formatNumber(order.finalPrice),
-    formatNumber(getOrderPaidAmount(order)),
-    formatNumber(order.profit),
+    csvNumber(order.printHours),
+    csvNumber(order.manualMinutes),
+    csvNumber(order.materialCost),
+    csvNumber(order.wasteWeight),
+    csvNumber(order.wasteCost),
+    csvNumber(order.depreciationCost),
+    csvNumber(order.electricityCost),
+    csvNumber(order.laborCost),
+    csvNumber(order.packagingCost),
+    csvNumber(order.accessoriesCost || 0),
+    csvNumber(order.shippingCost),
+    csvNumber(order.riskCost),
+    csvNumber(order.taxCost),
+    csvNumber(order.totalCost),
+    csvNumber(order.priceBeforeDiscount),
+    csvNumber(order.discountValue),
+    csvNumber(order.priceAfterDiscount),
+    csvNumber(order.minimumOrderPrice),
+    csvNumber(order.roundedAdjustment),
+    csvNumber(order.finalPrice),
+    csvNumber(getOrderPaidAmount(order)),
+    csvNumber(order.profit),
     order.notes || ''
   ]);
 
@@ -145,7 +153,7 @@ function exportSalesCSV() {
     .map((row) => row.map(csvEscape).join(','))
     .join('\n');
 
-  downloadTextFile(`sales-${new Date().toISOString().slice(0, 10)}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
+  downloadTextFile(`sales-${localDateString()}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
 }
 
 async function getTrackingRows() {
@@ -215,10 +223,10 @@ function exportStockCSV() {
     material.name,
     material.type,
     material.color,
-    formatNumber(material.weight),
-    formatNumber(material.remaining),
-    formatNumber(material.price),
-    formatNumber(material.lowStockThreshold),
+    csvNumber(material.weight),
+    csvNumber(material.remaining),
+    csvNumber(material.price),
+    csvNumber(material.lowStockThreshold),
     material.supplier || ''
   ]);
 
@@ -226,7 +234,7 @@ function exportStockCSV() {
     .map((row) => row.map(csvEscape).join(','))
     .join('\n');
 
-  downloadTextFile(`stock-${new Date().toISOString().slice(0, 10)}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
+  downloadTextFile(`stock-${localDateString()}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
 }
 
 async function exportBackup() {
@@ -238,7 +246,7 @@ async function exportBackup() {
   }
 
   downloadTextFile(
-    `print-farm-backup-${new Date().toISOString().slice(0, 10)}.json`,
+    `print-farm-backup-${localDateString()}.json`,
     JSON.stringify(response.data || {}, null, 2),
     'application/json;charset=utf-8'
   );

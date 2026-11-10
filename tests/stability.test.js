@@ -383,7 +383,7 @@ async function workerBackup(reason) {
   await test('Excel clipboard uses full cost, retains cents, and excludes cancelled orders', async () => {
     fresh('tracking-clipboard');
     const active = sampleOrder(h.database, {
-      itemName: '=1+2', customerName: 'عميل\tاختبار', totalCost: 158.4, accessoriesCost: 5.25, shippingCost: 10
+      itemName: '=1+2', customerName: 'عميل\tاختبار', totalCost: 158.4, accessoriesCost: 5.25, shippingCost: 10, profit: 146.35
     });
     const cancelled = sampleOrder(h.database, { code: 'ORD-1002', status: 'cancelled' });
     assert.equal((await h.farmAPI.createOrder(active)).success, true);

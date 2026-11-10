@@ -154,7 +154,7 @@ function renderStockMovementsTable() {
   }).join('');
 
   const moreRow = dashboardData.meta?.stockMovements?.hasMore
-    ? `<tr><td colspan="6"><button class="btn btn-secondary btn-small" type="button" onclick="loadMoreStockMovements()">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.stockMovements?.total || dashboardData.stockMovements.length) - dashboardData.stockMovements.length)})</button></td></tr>`
+    ? `<tr><td colspan="6"><button class="btn btn-secondary btn-small" type="button" data-action-click="loadMoreStockMovements">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.stockMovements?.total || dashboardData.stockMovements.length) - dashboardData.stockMovements.length)})</button></td></tr>`
     : '';
 
   body.innerHTML = rowsHtml + moreRow;

@@ -1,11 +1,11 @@
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 import subprocess, tempfile, json, time, shutil, os
-import urllib.request, re
+import sys
 root=Path(__file__).resolve().parent.parent
-out=root/'docs/test-results/browser-screenshots';out.mkdir(parents=True,exist_ok=True)
 tmp=tempfile.mkdtemp(prefix='moo3d-browser-')
-log=open(root/'docs/test-results/browser-server.log','w')
+out=Path(tmp)/'screenshots';out.mkdir()
+log=open(Path(tmp)/'browser-server.log','w', encoding='utf-8')
 server=subprocess.Popen(['node',str(root/'tests/browser-bridge.cjs'),tmp],stdout=subprocess.PIPE,stderr=log,text=True)
 info=json.loads(server.stdout.readline())
 print('Browser test: actual UI + preload/main + temporary SQLite; OS dialogs mocked.',flush=True)
@@ -13,20 +13,12 @@ checks=[]
 def passed(s): checks.append(s);print('PASS:',s,flush=True)
 try:
  with sync_playwright() as pw:
-  browser=pw.chromium.launch(executable_path=shutil.which('chromium'),headless=True,args=['--no-sandbox'])
+  browser=pw.chromium.launch(executable_path=os.getenv('MOO3D_CHROMIUM_PATH') or shutil.which('chromium'),headless=True,args=['--no-sandbox'])
   page=browser.new_page(viewport={'width':1366,'height':768})
   page.set_default_timeout(5000)
   errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-  def rpc(source, method, args):
-   request=urllib.request.Request(f'http://127.0.0.1:{info["port"]}/test-api/{method}', data=json.dumps(args).encode(), headers={'Content-Type':'application/json','X-Test-Token':info['token']},method='POST')
-   with urllib.request.urlopen(request,timeout=5) as response:return json.load(response)
-  page.expose_binding('__mooTestCall', rpc)
-  bridge_script='window.farmAPI = Object.fromEntries('+json.dumps(info['methods'])+'.map(name => [name, (...args) => window.__mooTestCall(name, args)]));'
-  page.evaluate(bridge_script)
-  source=(root/'index.html').read_text()
-  source=re.sub(r'<script src="([^"]+)"\s*></script>',lambda m:'<script>'+ (root/m.group(1)).read_text() +'</script>',source)
-  source=re.sub(r'<link[^>]*href="style.css"[^>]*>', lambda m:'<style>'+(root/'style.css').read_text()+'</style>',source)
-  page.set_content(source)
+  base=f'http://127.0.0.1:{info["port"]}/'
+  page.goto(base)
   page.wait_for_function("typeof dashboardData !== 'undefined' && dashboardData.materials.length === 4 && !!getValue('selectedPrinter')")
   page.locator('#itemName').fill('مجسم اختبار الواجهة')
   page.locator('#customerName').fill('عميل تجريبي')
@@ -48,7 +40,7 @@ try:
   page.locator('#printHours').blur()
   page.wait_for_timeout(300)
   saved_price=page.evaluate('currentCalc.finalPrice')
-  save_button=page.locator('button[onclick="saveSale()"]')
+  save_button=page.locator('button[data-action-click="saveSale"]')
   sale_confirm=page.locator('#saleConfirmDialog')
   for dismissal in ('click', 'Escape', 'Enter'):
    save_button.click()
@@ -79,7 +71,7 @@ try:
   page.wait_for_function("isModalOpen('editModal')")
   page.locator('#editCustomerName').fill('تم تعديل العميل بنجاح')
   page.screenshot(path=str(out/'edit-sale.png'),full_page=True)
-  page.locator('#editModal button[onclick="saveEditSale()"]').click()
+  page.locator('#editModal button[data-action-click="saveEditSale"]').click()
   page.wait_for_function("!isModalOpen('editModal') && dashboardData.orders[0].customerName === 'تم تعديل العميل بنجاح'")
   after=page.evaluate('JSON.parse(JSON.stringify(dashboardData.orders[0]))')
   for key in ['finalPrice','totalCost','profit','depreciationCost','discountValue','roundedAdjustment','printHours']:
@@ -88,17 +80,17 @@ try:
   passed('Report edit button and save button work without changing historical prices or consuming stock')
   page.locator('#salesTableBody .action-btn.edit').first.click()
   page.locator('#editItemName').fill('')
-  page.locator('#editModal button[onclick="saveEditSale()"]').click()
+  page.locator('#editModal button[data-action-click="saveEditSale"]').click()
   page.locator('#toastMsg.error').wait_for(state='visible')
   assert page.evaluate("Number(getComputedStyle(document.getElementById('toastMsg')).zIndex) > Number(getComputedStyle(document.getElementById('editModal')).zIndex)")
   passed('Validation errors remain visible over sales/edit panels')
-  page.locator('#editModal button[onclick="closeModal(\'editModal\')"]').click()
+  page.locator('#editModal button[data-action-click="closeModal"[data-arg-click='"editModal"']]').click()
   page.locator('#salesTableBody button',has_text='فاتورة').first.click()
   text=page.locator('#invoiceContent').inner_text()
   assert 'صافي الربح الداخلي' not in text and 'تفاصيل التكلفة' not in text
   page.screenshot(path=str(out/'customer-invoice.png'),full_page=True)
   passed('Customer invoice excludes internal costs and profits')
-  page.locator('#invoiceModal button[onclick="closeInvoice()"]').click()
+  page.locator('#invoiceModal button[data-action-click="closeInvoice"]').click()
   page.locator('#salesTableBody .action-btn.delete').first.click()
   confirmation=page.locator('#actionConfirmDialog')
   confirmation.get_by_role('button', name='حذف الأوردر', exact=True).click()
@@ -112,7 +104,7 @@ try:
   confirmation.get_by_role('button', name='استيراد', exact=True).click()
   page.wait_for_function('dashboardData.orders.length === 1')
   passed('Actual backup file input restores data through preload/main validation')
-  page.locator('button[onclick="openFreshStartModal()"]').click()
+  page.locator('button[data-action-click="openFreshStartModal"]').click()
   assert page.locator('#executeFreshStart').is_disabled()
   assert page.evaluate('dashboardData.orders.length')==1
   page.locator('#resetConfirmation').fill('بداية جديده')
@@ -133,9 +125,7 @@ try:
   page=browser.new_page(viewport={'width':1366,'height':768})
   page.set_default_timeout(5000)
   page.on('pageerror',lambda e:errors.append(str(e)))
-  page.expose_binding('__mooTestCall', rpc)
-  page.evaluate(bridge_script)
-  page.set_content(source)
+  page.goto(base)
   page.wait_for_function("typeof dashboardData !== 'undefined' && dashboardData.config.openingCash === '0' && dashboardData.printers.length === 1")
   assert page.evaluate('dashboardData.materials.length')==0
   passed('UI reload keeps inventory empty, without recreating sample materials')
@@ -149,7 +139,7 @@ try:
   assert not errors, errors
   passed('No uncaught browser JavaScript errors during all scenarios')
   browser.close()
- print(json.dumps({'passed':len(checks),'checks':checks,'nativeElectronDialogs':'mocked','browser':'system Chromium','platform':'Linux'},ensure_ascii=False,indent=2),flush=True)
+ print(json.dumps({'passed':len(checks),'checks':checks,'nativeElectronDialogs':'mocked','browser':'Chromium','platform':sys.platform},ensure_ascii=False,indent=2),flush=True)
 finally:
  server.terminate()
  try:server.wait(timeout=3)

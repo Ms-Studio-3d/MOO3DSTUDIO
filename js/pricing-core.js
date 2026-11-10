@@ -32,7 +32,14 @@
     const safeStep = toNonNegativeNumber(step, 5);
 
     if (!Number.isFinite(safeStep) || safeStep <= 0) return safeValue;
-    return Math.ceil(safeValue / safeStep) * safeStep;
+    const steps = safeValue / safeStep;
+    const nearest = Math.round(steps);
+    const tolerance = Math.abs(steps) * Number.EPSILON * 2;
+    const count = Math.abs(steps - nearest) <= tolerance ? nearest : Math.ceil(steps);
+    const [digits, exponent = 0] = String(safeStep).split('e');
+    const scale = Math.max(0, (digits.split('.')[1]?.length || 0) - Number(exponent));
+    const result = count * safeStep;
+    return scale <= 100 ? Number(result.toFixed(scale)) : result;
   }
 
   function calculateMoo3dPricing(input = {}) {
@@ -84,7 +91,7 @@
     const priceAfterDiscountBeforeMinimum = Math.max(0, priceBeforeDiscount - safeDiscountValue);
     const priceAfterDiscount = Math.max(priceAfterDiscountBeforeMinimum, minimumOrderPrice);
     const finalPrice = roundUpByStep(priceAfterDiscount, roundingStep);
-    const roundedAdjustment = finalPrice - priceAfterDiscount;
+    const roundedAdjustment = Math.max(0, finalPrice - priceAfterDiscount);
     const profit = finalPrice - totalCost - directAddOnsCost;
     const minimumNoLossPrice = totalCost + directAddOnsCost;
 

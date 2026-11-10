@@ -99,9 +99,9 @@ function renderPrinters() {
 
         <div class="list-card-body">
           <div>الموديل: ${escapeHtml(printer.model || '-')}</div>
-          <div>تشغيل الطابعة فقط / ساعة: ${formatMoney(printer.hourlyDepreciation || 0)}</div>
-          ${printer.purchaseAssetId ? `<div>سعر الشراء ${formatMoney(printer.purchasePrice)}</div>` : ''}
-          ${printer.purchaseAssetId ? `<div>إهلاك الطابعة / ساعة ${formatMoney(depreciation)}${printer.purchaseHourlyDepreciationOverride != null ? ' (يدوي)' : ''}</div>` : ''}
+          <div>تشغيل الطابعة فقط / ساعة: ${formatMoneyHtml(printer.hourlyDepreciation || 0)}</div>
+          ${printer.purchaseAssetId ? `<div>سعر الشراء ${formatMoneyHtml(printer.purchasePrice)}</div>` : ''}
+          ${printer.purchaseAssetId ? `<div>إهلاك الطابعة / ساعة ${formatMoneyHtml(depreciation)}${printer.purchaseHourlyDepreciationOverride != null ? ' (يدوي)' : ''}</div>` : ''}
           <div>إجمالي ساعات التشغيل: ${formatNumber(usage.totalHours)} ساعة</div>
           <div>عدد الأوردرات على الطابعة: ${usage.ordersCount}</div>
           <div>أوردرات تم تسليمها: ${usage.deliveredOrders}</div>
@@ -111,8 +111,8 @@ function renderPrinters() {
         </div>
 
         <div class="inline-actions card-actions">
-          <button class="btn btn-secondary" type="button" onclick="editPrinter(${printerId})">تعديل</button>
-          <button class="btn btn-danger" type="button" onclick="deletePrinterAction(${printerId})">حذف</button>
+          <button class="btn btn-secondary" type="button" data-action-click="editPrinter" data-arg-click="${printerId}">تعديل</button>
+          <button class="btn btn-danger" type="button" data-action-click="deletePrinterAction" data-arg-click="${printerId}">حذف</button>
         </div>
       </div>
     `;

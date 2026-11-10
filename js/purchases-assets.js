@@ -12,7 +12,7 @@ function fillPurchaseMaterialSelect(selectedId = '') {
     '<option value="">لا يزود مخزون</option>',
     '<option value="__new__">إضافة خامة جديدة باسم البند</option>',
     ...(dashboardData.materials || []).map((material) => (
-      `<option value="${material.id}">${escapeHtml(material.name)} — متبقي ${formatNumber(material.remaining || 0)} جم</option>`
+      `<option value="${material.id}">${escapeHtml(material.name)} — متبقي ${stockWeightText(material.remaining || 0)} جم</option>`
     ))
   ].join('');
 
@@ -40,20 +40,20 @@ function renderPurchasesTable() {
         <td>${escapeHtml(purchase.item || '-')}</td>
         <td>${formatNumber(purchase.quantity || 0)}</td>
         <td>${getPurchaseTotalGrams(purchase) ? `${formatNumber(getPurchaseTotalGrams(purchase))} جم` : '-'}</td>
-        <td>${formatMoney(purchase.amount || 0)}</td>
+        <td>${formatMoneyHtml(purchase.amount || 0)}</td>
         <td>${escapeHtml(purchase.supplier || '-')}</td>
         <td>${escapeHtml(purchase.materialName || '-')}</td>
         <td>${escapeHtml(purchase.notes || '-')}</td>
         <td>
-          <button class="action-btn edit" type="button" onclick="openPurchaseModal(${safeId})">تعديل</button>
-          <button class="action-btn delete" type="button" onclick="deletePurchaseAction(${safeId})">حذف</button>
+          <button class="action-btn edit" type="button" data-action-click="openPurchaseModal" data-arg-click="${safeId}">تعديل</button>
+          <button class="action-btn delete" type="button" data-action-click="deletePurchaseAction" data-arg-click="${safeId}">حذف</button>
         </td>
       </tr>
     `;
   }).join('');
 
   const moreRow = dashboardData.meta?.purchases?.hasMore
-    ? `<tr><td colspan="10"><button class="btn btn-secondary btn-small" type="button" onclick="loadMorePurchases()">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.purchases?.total || rows.length) - rows.length)})</button></td></tr>`
+    ? `<tr><td colspan="10"><button class="btn btn-secondary btn-small" type="button" data-action-click="loadMorePurchases">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.purchases?.total || rows.length) - rows.length)})</button></td></tr>`
     : '';
 
   target.innerHTML = rows.length
@@ -104,7 +104,7 @@ function openPurchaseModal(id = null) {
 
   setText('purchaseModalTitle', purchase ? 'تعديل مشتريات' : 'إضافة مشتريات');
   setValue('purchaseId', purchase?.id || '');
-  setValue('purchaseDate', purchase?.date || new Date().toISOString().slice(0, 10));
+  setValue('purchaseDate', purchase?.date || localDateString());
   setValue('purchaseCategory', purchase?.category || 'خامات');
   setValue('purchaseItem', purchase?.item || '');
   fillPurchaseMaterialSelect(purchase?.materialId || (purchase ? '' : '__new__'));
@@ -204,21 +204,21 @@ function renderAssetsTable() {
       <tr>
         <td>${escapeHtml(asset.date || '-')}</td>
         <td>${escapeHtml(asset.item || '-')}</td>
-        <td>${formatMoney(asset.cost || 0)}</td>
+        <td>${formatMoneyHtml(asset.cost || 0)}</td>
         <td>${escapeHtml(asset.type || '-')}</td>
         <td>${formatNumber(asset.depreciationHours || 0)}</td>
-        <td>${formatMoney(depHour)}${asset.hourlyDepreciationOverride != null ? ' (يدوي)' : ''}</td>
+        <td>${formatMoneyHtml(depHour)}${asset.hourlyDepreciationOverride != null ? ' (يدوي)' : ''}</td>
         <td>${escapeHtml(asset.notes || '-')}</td>
         <td>
-          <button class="action-btn edit" type="button" onclick="openAssetModal(${safeId})">تعديل</button>
-          <button class="action-btn delete" type="button" onclick="deleteAssetAction(${safeId})">حذف</button>
+          <button class="action-btn edit" type="button" data-action-click="openAssetModal" data-arg-click="${safeId}">تعديل</button>
+          <button class="action-btn delete" type="button" data-action-click="deleteAssetAction" data-arg-click="${safeId}">حذف</button>
         </td>
       </tr>
     `;
   }).join('');
 
   const moreRow = dashboardData.meta?.assets?.hasMore
-    ? `<tr><td colspan="8"><button class="btn btn-secondary btn-small" type="button" onclick="loadMoreAssets()">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.assets?.total || rows.length) - rows.length)})</button></td></tr>`
+    ? `<tr><td colspan="8"><button class="btn btn-secondary btn-small" type="button" data-action-click="loadMoreAssets">عرض المزيد (${Math.max(0, Number(dashboardData.meta?.assets?.total || rows.length) - rows.length)})</button></td></tr>`
     : '';
 
   target.innerHTML = rows.length
@@ -263,7 +263,7 @@ function openAssetModal(id = null) {
 
   setText('assetModalTitle', asset ? 'تعديل أصل' : 'إضافة أصل');
   setValue('assetId', asset?.id || '');
-  setValue('assetDate', asset?.date || new Date().toISOString().slice(0, 10));
+  setValue('assetDate', asset?.date || localDateString());
   setValue('assetItem', asset?.item || '');
   setValue('assetCost', asset?.cost ?? 0);
   setValue('assetType', asset?.type || '');

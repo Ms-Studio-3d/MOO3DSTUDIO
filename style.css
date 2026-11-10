@@ -3118,3 +3118,19 @@ button[onclick="saveQuote()"] {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+@media (max-width: 1180px), (max-height: 640px) {
+  .app-content { overflow: auto !important; }
+  .main-layout.quote-workspace, .quote-inputs-column, .quote-summary-column {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .modal.app-panel .modal-content { max-height: calc(100dvh - 16px); overflow: auto !important; }
+  .table-wrap { min-width: 0; overflow: auto; }
+}
+
+@media (max-width: 1180px) {
+  .quote-workspace > *, .quote-inputs-column > * { min-width: 0; }
+  .bottom-nav { overflow-y: auto; }
+}

@@ -232,7 +232,7 @@ function renderPipelineDebounced() {
   debounceRender(() => renderPipeline(), 'pipeline_filters');
 }
 
-function applyConfigToInputs() {
+function applyConfigToInputs({ includeOrder = true } = {}) {
   const defaultProfitMargin = String(toPositiveNumber(dashboardData.config.defaultProfitMargin, DEFAULT_CONFIG.defaultProfitMargin));
   const defaultManualMinutes = String(toPositiveNumber(dashboardData.config.defaultManualMinutes, DEFAULT_CONFIG.defaultManualMinutes));
   const laborRate = String(toPositiveNumber(dashboardData.config.laborRate, DEFAULT_CONFIG.laborRate));
@@ -257,20 +257,22 @@ function applyConfigToInputs() {
   setValue('farmName', dashboardData.config.farmName || DEFAULT_CONFIG.farmName);
   setValue('currencyName', currencyName);
 
-  setValue('pieceQuantity', getValue('pieceQuantity', '1') || '1');
-  setValue('profitMargin', defaultProfitMargin);
-  setValue('manualMins', defaultManualMinutes);
-  setValue('discountValue', defaultDiscount);
-  setValue('laborRate', laborRate);
-  setValue('electricityCostPerHour', electricityCostPerHour);
-  setValue('printerPowerKw', printerPowerKw);
-  setValue('packagingCost', packagingCost);
-  setValue('failurePercent', failurePercent);
-  setValue('wasteWeight', defaultWasteWeight);
-  setValue('minimumOrderPrice', minimumOrderPrice);
-  setValue('accessoriesCost', accessoriesCost);
-  setValue('shippingCost', shippingCost);
-  setValue('defaultTaxPercent', defaultTax);
+  if (includeOrder) {
+    setValue('pieceQuantity', getValue('pieceQuantity', '1') || '1');
+    setValue('profitMargin', defaultProfitMargin);
+    setValue('manualMins', defaultManualMinutes);
+    setValue('discountValue', defaultDiscount);
+    setValue('laborRate', laborRate);
+    setValue('electricityCostPerHour', electricityCostPerHour);
+    setValue('printerPowerKw', printerPowerKw);
+    setValue('packagingCost', packagingCost);
+    setValue('failurePercent', failurePercent);
+    setValue('wasteWeight', defaultWasteWeight);
+    setValue('minimumOrderPrice', minimumOrderPrice);
+    setValue('accessoriesCost', accessoriesCost);
+    setValue('shippingCost', shippingCost);
+    setValue('defaultTaxPercent', defaultTax);
+  }
 
   setValue('settingsDefaultProfitMargin', defaultProfitMargin);
   setValue('settingsDefaultManualMinutes', defaultManualMinutes);

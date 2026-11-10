@@ -1,21 +1,22 @@
 @echo off
 setlocal
 cd /d "%~dp0"
-title MOO3D Farm 0.0.1 - Build Windows Installer
 if not exist "package.json" goto wrong_folder
 where node >nul 2>nul
 if errorlevel 1 goto no_node
-node -e "if (Number(process.versions.node.split('.')[0]) !== 22) process.exit(1)"
+node -e "const [major, minor] = process.versions.node.split('.').map(Number); if (major < 22 || (major === 22 && minor < 12)) process.exit(1)"
 if errorlevel 1 goto no_node
+for /f %%V in ('node -p "require('./package.json').version"') do set "APP_VERSION=%%V"
+title MOO3D Farm %APP_VERSION% - Build Windows Installer
 if not "%PROCESSOR_ARCHITECTURE%"=="AMD64" echo Note: this project builds a Windows x64 installer.
 echo This builds the program files only. It does NOT reset your business data.
 echo Internet access is required. Keep this window open until it finishes.
 echo Detailed progress: build-windows.log
 call npm ci --no-audit --no-fund > build-windows.log 2>&1
 if errorlevel 1 goto failed
-call npm test >> build-windows.log 2>&1
+call npm run setup:electron >> build-windows.log 2>&1
 if errorlevel 1 goto failed
-call npm run rebuild >> build-windows.log 2>&1
+call npm test >> build-windows.log 2>&1
 if errorlevel 1 goto failed
 set ELECTRON_RUN_AS_NODE=1
 start /b /wait "" "node_modules\electron\dist\electron.exe" tests\electron-runtime-smoke.cjs >> build-windows.log 2>&1
@@ -29,7 +30,7 @@ start "" "%CD%\dist"
 pause
 exit /b 0
 :no_node
-echo Install Node.js 22.x for Windows x64 from the official nodejs.org website.
+echo Install Node.js 22.12 or later for Windows x64 from the official nodejs.org website.
 echo Then close this window and run BUILD-WINDOWS.cmd again.
 echo You can also use the GitHub Actions method in START-HERE.html without installing Node.
 pause

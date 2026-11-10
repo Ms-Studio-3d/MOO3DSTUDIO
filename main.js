@@ -1,8 +1,11 @@
+const { localDateString } = require('./js/local-date');
 const { app, BrowserWindow, shell, ipcMain, dialog, clipboard } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
 const fs = require('fs');
 const { Worker } = require('worker_threads');
 const {
+  BACKUP_SCHEMA_VERSION,
   getDb,
   getDashboardData,
   getDataPage,
@@ -11,7 +14,7 @@ const {
   getDatabasePath,
   getNextOrderCode,
   getNextQuoteCode,
-  setConfig,
+  saveUserConfig,
   createPrinter,
   savePrinterWithAsset,
   updatePrinter,
@@ -39,10 +42,13 @@ const { ensureTrackingWorkbook, prepareTrackingReset, saveTrackingWorkbook } = r
 const { productName: PRODUCT_NAME } = require('./package.json');
 const DATA_DIRECTORY_NAME = 'MOO3DSTUDIO';
 const BACKUP_APP_NAME = 'moo3dstudio';
+const APP_PAGE = path.join(__dirname, 'index.html');
+const APP_PAGE_URL = pathToFileURL(APP_PAGE).href;
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
 let autoBackupTimer = null;
+let dailyBackupTimer = null;
 let autoBackupRunning = false;
 let shutdownBackupDone = false;
 let maintenanceBusy = false;
@@ -134,7 +140,7 @@ function asPositiveNumber(value, fallback = 0) {
 
 function asNullableId(value) {
   const num = Number(value);
-  return Number.isFinite(num) && num > 0 ? num : null;
+  return Number.isSafeInteger(num) && num > 0 ? num : null;
 }
 
 function asInteger(value, fallback = 0) {
@@ -176,8 +182,8 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 960,
-    minWidth: 1200,
-    minHeight: 720,
+    minWidth: 850,
+    minHeight: 540,
     show: false,
     center: true,
     autoHideMenuBar: true,
@@ -188,11 +194,11 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      devTools: true
+      devTools: !app.isPackaged
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'index.html'));
+  mainWindow.loadFile(APP_PAGE);
 
   mainWindow.once('ready-to-show', () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -231,7 +237,11 @@ function createMainWindow() {
 }
 
 function handleIpc(channel, handler, fallbackMessage) {
-  ipcMain.handle(channel, async (_event, payload) => {
+  ipcMain.handle(channel, async (event, payload) => {
+    const contents = mainWindow?.webContents;
+    if (!contents || event.sender !== contents || event.senderFrame !== contents.mainFrame || event.senderFrame?.url !== APP_PAGE_URL) {
+      return fail('مصدر الطلب غير مسموح.');
+    }
     try {
       if (maintenanceBusy) throw new Error('جاري تأمين البيانات. أعد المحاولة بعد انتهاء الاستيراد أو البداية الجديدة.');
       ensureDbReady();
@@ -295,7 +305,7 @@ function normalizeOrderPayload(payload) {
     customerName: asTrimmedString(data.customerName),
     printerId: asNullableId(data.printerId),
     status: normalizeStatus(data.status, 'new'),
-    quantity: asInteger(data.quantity, 0),
+    quantity: asNumber(data.quantity, 0),
     printHours: asPositiveNumber(data.printHours, 0),
     manualMinutes: asPositiveNumber(data.manualMinutes, 0),
     notes: asTrimmedString(data.notes),
@@ -400,6 +410,12 @@ function validateMaterialPayload(data) {
   // Remaining is total stock; weight is the reference pack size used in gram pricing.
 }
 
+function validateNewPriceSnapshot(data) {
+  const expectedProfit = data.finalPrice - data.totalCost - data.accessoriesCost - data.shippingCost;
+  // The displayed components are rounded independently before being sent to main.
+  if (Math.abs(data.profit - expectedProfit) > 0.03) throw new Error('صافي الربح لا يطابق السعر والتكلفة المسجلة. أعد حساب الأوردر.');
+}
+
 function validateCreateOrderPayload(data) {
   if (!data.code) throw new Error('كود الأوردر غير صالح');
   if (!data.itemName) throw new Error('اسم المجسم مطلوب');
@@ -418,6 +434,7 @@ function validateCreateOrderPayload(data) {
   }
 
   if (data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost) throw new Error('سعر البيع أقل من التكلفة والمصاريف المباشرة');
+  validateNewPriceSnapshot(data);
 }
 
 function validateUpdateOrderPayload(data) {
@@ -462,6 +479,7 @@ function validateCreateQuotePayload(data) {
   }
 
   if (data.finalPrice < data.totalCost + data.accessoriesCost + data.shippingCost) throw new Error('سعر البيع أقل من التكلفة والمصاريف المباشرة');
+  validateNewPriceSnapshot(data);
 }
 
 function getBackupsDir() {
@@ -474,7 +492,7 @@ function ensureBackupsDir() {
   return dir;
 }
 
-function createAutomaticBackup(reason = 'auto') {
+function createAutomaticBackup(reason = 'auto', timeoutMs = 30_000) {
   return new Promise((resolve) => {
     try {
       ensureDbReady();
@@ -492,8 +510,15 @@ function createAutomaticBackup(reason = 'auto') {
       const finish = (filePath = null) => {
         if (settled) return;
         settled = true;
+        clearTimeout(deadline);
         resolve(filePath || null);
       };
+
+      const deadline = setTimeout(() => {
+        console.warn('[AUTO BACKUP TIMEOUT]', reason);
+        worker.terminate().catch(() => {});
+        finish(null);
+      }, timeoutMs);
 
       worker.on('message', (message) => {
         if (message?.success) {
@@ -563,7 +588,7 @@ function validateBackupPayload(payload) {
     throw new Error('ملف النسخة الاحتياطية لا يبدو أنه خاص بالبرنامج');
   }
 
-  if (!Number.isInteger(schemaVersion) || schemaVersion < 7 || schemaVersion > 9) {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 7 || schemaVersion > BACKUP_SCHEMA_VERSION) {
     throw new Error('إصدار النسخة الاحتياطية قديم أو غير صالح');
   }
 
@@ -608,6 +633,7 @@ function validateBackupPayload(payload) {
   for (const [key, fields] of Object.entries(numericFields)) {
     for (const row of (data[key] || [])) {
       if (!row || typeof row !== 'object' || Array.isArray(row)) throw new Error(`سجل غير صالح في: ${key}`);
+      if (row.createdAt != null && typeof row.createdAt !== 'string') throw new Error('تاريخ إنشاء غير صالح في: ' + key);
       for (const field of fields) {
         if (row[field] !== undefined && (row[field] === null || row[field] === '' || !Number.isFinite(Number(row[field])))) {
           throw new Error(`رقم غير صالح في النسخة الاحتياطية: ${key}.${field}`);
@@ -632,6 +658,9 @@ function validateBackupPayload(payload) {
   };
   orders.forEach((row) => checkReference(row.printerId, printerIds, 'طابعة الأوردر'));
   orderMaterials.forEach((row) => {
+    if (row.wasteGrams != null && (!Number.isFinite(Number(row.wasteGrams)) || row.wasteGrams === '' || Number(row.wasteGrams) < 0)) {
+      throw new Error('وزن هالك غير صالح في النسخة الاحتياطية.');
+    }
     checkReference(row.orderId, orderIds, 'استهلاك الأوردر', true);
     checkReference(row.materialId, materialIds, 'خامة الأوردر');
   });
@@ -683,7 +712,8 @@ function validateBackupPayload(payload) {
   stockMovements.forEach((movement) => {
     const type = asTrimmedString(movement.movementType, 'manual');
     if (!allowedStockMovements.has(type)) throw new Error(`نوع حركة مخزون غير صالح: ${type}`);
-    if (asNumber(movement.quantity, 0) === 0) throw new Error('حركة مخزون بكمية صفر غير صالحة');
+    const legacyOpeningRow = type === 'in' && movement.reason === 'إضافة خامة جديدة';
+    if (asNumber(movement.quantity, 0) === 0 && !legacyOpeningRow) throw new Error('حركة مخزون بكمية صفر غير صالحة');
   });
 
   purchases.forEach((purchase) => {
@@ -755,9 +785,8 @@ function registerIpcHandlers() {
   handleIpc(
     CHANNELS.saveConfig,
     async (payload) => {
-      for (const [key, value] of Object.entries(asObject(payload))) {
-        setConfig(key, value);
-      }
+      saveUserConfig(asObject(payload));
+      scheduleAutomaticBackup('after-settings');
 
       return ok();
     },
@@ -774,13 +803,14 @@ function registerIpcHandlers() {
       if (purchaseInput == null) {
         if (data.id) updatePrinter(data);
         else createPrinter(data);
+        scheduleAutomaticBackup('after-printer');
         return ok();
       }
       const purchase = asObject(purchaseInput);
 
       const asset = normalizeAssetPayload({
         id: purchase.assetId,
-        date: new Date().toISOString().slice(0, 10),
+        date: localDateString(),
         item: data.name,
         type: 'طابعة',
         cost: purchase.cost,
@@ -804,7 +834,9 @@ function registerIpcHandlers() {
       const id = asNullableId(asObject(payload).id);
       if (!id) throw new Error('رقم الطابعة غير صالح');
 
-      return ok(deletePrinter(id));
+      const result = deletePrinter(id);
+      scheduleAutomaticBackup('after-delete-printer');
+      return ok(result);
     },
     'فشل في حذف الطابعة'
   );
@@ -817,6 +849,7 @@ function registerIpcHandlers() {
 
       if (data.id) updateMaterial(data);
       else createMaterial(data);
+      scheduleAutomaticBackup('after-material');
 
       return ok();
     },
@@ -829,7 +862,9 @@ function registerIpcHandlers() {
       const id = asNullableId(asObject(payload).id);
       if (!id) throw new Error('رقم الخامة غير صالح');
 
-      return ok(deleteMaterial(id));
+      const result = deleteMaterial(id);
+      scheduleAutomaticBackup('after-delete-material');
+      return ok(result);
     },
     'فشل في حذف الخامة'
   );
@@ -912,7 +947,9 @@ function registerIpcHandlers() {
       const data = normalizeOrderPayload(payload);
       data.quoteCode = asTrimmedString(asObject(payload).quoteCode || asObject(payload).code);
       validateCreateQuotePayload(data);
-      return ok(createQuote({ ...data, quoteCode: data.quoteCode }));
+      const result = createQuote({ ...data, quoteCode: data.quoteCode });
+      scheduleAutomaticBackup('after-quote');
+      return ok(result);
     },
     'فشل في حفظ عرض السعر'
   );
@@ -923,6 +960,7 @@ function registerIpcHandlers() {
       const code = asTrimmedString(asObject(payload).code);
       if (!code) throw new Error('كود عرض السعر غير صالح');
       deleteQuote(code);
+      scheduleAutomaticBackup('after-delete-quote');
       return ok();
     },
     'فشل في حذف عرض السعر'
@@ -1025,7 +1063,7 @@ app.whenReady().then(async () => {
       console.warn('[TRACKING WORKBOOK SETUP FAILED]', error?.message || error);
     });
     scheduleAutomaticBackup('startup', 8000);
-    setInterval(() => scheduleAutomaticBackup('daily', 8000), 24 * 60 * 60 * 1000);
+    dailyBackupTimer = setInterval(() => scheduleAutomaticBackup('daily', 8000), 24 * 60 * 60 * 1000);
     registerIpcHandlers();
     createMainWindow();
 
@@ -1059,7 +1097,9 @@ app.on('before-quit', (event) => {
     autoBackupTimer = null;
   }
 
-  createAutomaticBackup('shutdown')
+  if (dailyBackupTimer) clearInterval(dailyBackupTimer);
+
+  createAutomaticBackup('shutdown', 5000)
     .catch((error) => console.warn('[SHUTDOWN BACKUP FAILED]', error?.message || error))
     .finally(() => app.quit());
 });

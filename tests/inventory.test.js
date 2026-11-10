@@ -13,13 +13,11 @@ const updateOrderSource = database.slice(database.indexOf('function updateOrder'
 const deleteOrderSource = database.slice(database.indexOf('function deleteOrder'), database.indexOf('function savePurchase'));
 const createOrderSource = database.slice(database.indexOf('function insertOrderWithStock'), database.indexOf('function convertQuoteToOrder'));
 
-mustInclude(createOrderSource, 'WHERE id = ? AND remaining >= ? AND is_archived = 0', 'atomic stock decrement for create order');
-mustInclude(updateOrderSource, "'return',\n          Number(item.grams || 0),\n          'استرجاع قبل تعديل أوردر'", 'stock return movement before order edit');
-mustInclude(updateOrderSource, "'out',\n          Number(item.grams || 0),\n          'استهلاك بعد تعديل أوردر'", 'stock out movement after order edit');
-mustInclude(updateOrderSource, 'WHERE id = ? AND remaining >= ? AND is_archived = ?', 'atomic stock decrement for order edit');
-mustInclude(deleteOrderSource, "'return',\n        Number(item.grams || 0),\n        'استرجاع بعد حذف أوردر'", 'stock return movement after order delete');
-mustInclude(updateOrderSource, 'if (Number(item.grams || 0) <= 0)', 'edit order rejects zero material grams');
-mustInclude(createOrderSource, 'if (Number(item.grams || 0) <= 0)', 'create order rejects zero material grams');
+mustInclude(database, 'WHERE id = ? AND remaining >= ? - ?', 'atomic stock debit protects the available balance');
+mustInclude(createOrderSource, 'applyOrderStockDelta(material, material.consumed', 'creation debits total including waste');
+mustInclude(updateOrderSource, 'const delta = (after.get(id) || 0) - (before.get(id) || 0)', 'editing applies only the consumption difference');
+mustInclude(deleteOrderSource, 'if (!item.materialId) continue;', 'missing linked material cannot produce a false return');
+mustInclude(deleteOrderSource, '-(item.grams + (item.wasteGrams || 0))', 'deletion credits recorded weight and waste');
 
 const transactionUses = (database.match(/db\.transaction/g) || []).length;
 assert.ok(transactionUses >= 5, `expected several transactional inventory/database operations, found ${transactionUses}`);

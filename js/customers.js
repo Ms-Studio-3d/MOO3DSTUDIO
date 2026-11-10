@@ -21,7 +21,7 @@ async function renderCustomers() {
   const visibleCustomers = customers.slice(0, customersVisibleCount);
   const remaining = Math.max(0, total - visibleCustomers.length);
   const moreButton = (remaining > 0 || state.meta?.hasMore)
-    ? `<div class="inline-actions"><button class="btn btn-secondary btn-small" type="button" onclick="showMoreCustomers()">عرض المزيد (${remaining})</button></div>`
+    ? `<div class="inline-actions"><button class="btn btn-secondary btn-small" type="button" data-action-click="showMoreCustomers">عرض المزيد (${remaining})</button></div>`
     : '';
 
   customersList.innerHTML = visibleCustomers.map((customer) => {
@@ -33,8 +33,8 @@ async function renderCustomers() {
         </div>
 
         <div class="list-card-body">
-          <div>إجمالي المبيعات: ${formatMoney(customer.revenue)}</div>
-          <div>صافي الربح: ${formatMoney(customer.profit)}</div>
+          <div>إجمالي المبيعات: ${formatMoneyHtml(customer.revenue)}</div>
+          <div>صافي الربح: ${formatMoneyHtml(customer.profit)}</div>
           <div>آخر أوردر: ${escapeHtml(customer.lastOrderCode || '-')} - ${escapeHtml(customer.lastOrderItem || '-')}</div>
           <div>آخر تاريخ: ${escapeHtml(customer.lastOrderDate || '-')}</div>
         </div>

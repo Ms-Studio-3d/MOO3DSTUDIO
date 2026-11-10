@@ -22,8 +22,9 @@ async function readIfPresent(file) {
 async function readXml(zip, entry) {
   const part = zip.file(entry);
   if (!part) throw new Error('ملف المتابعة غير صالح أو ناقص.');
-  const text = (await part.async('string')).replace(/^\uFEFF/, '');
-  return new DOMParser().parseFromString(text, 'application/xml');
+  const text = (await part.async('string')).replace(/^\uFEFF/, '').replace(/^<\?xml\s+[^?]*\?>\s*/, '');
+  if (/<!DOCTYPE\b/i.test(text)) throw new Error('ملف المتابعة يحتوي على تعريف XML غير مدعوم.');
+  return new DOMParser({ onError(level, message) { throw new Error(message); } }).parseFromString(text, 'application/xml');
 }
 
 function setCell(row, address, value) {
@@ -74,7 +75,9 @@ function resolveSheetPath(workbook, relationships, name) {
     .find((item) => item.getAttribute('Id') === relId);
   const target = relation?.getAttribute('Target');
   if (!target || relation.getAttribute('TargetMode') === 'External') throw new Error('تبويب المتابعة غير صالح.');
-  return target.startsWith('/') ? target.slice(1) : path.posix.join('xl', target);
+  const entry = target.startsWith('/') ? target.slice(1) : path.posix.join('xl', target);
+  if (!/^xl\/worksheets\/[\w.-]+\.xml$/.test(entry)) throw new Error('مسار تبويب المتابعة غير صالح.');
+  return entry;
 }
 
 function getRows(sheetXml) {
@@ -163,7 +166,7 @@ async function updateWorkbook(buffer, snapshot) {
       throw new Error('ملف المتابعة الحالي مختلف عن قالب البداية الجديدة.');
     }
     updateRows(sheet, rows, columns);
-    zip.file(sheetPath, serializer.serializeToString(sheet));
+    zip.file(sheetPath, serializer.serializeToString(sheet, { requireWellFormed: true }));
   }
   const metricsPath = resolveSheetPath(workbook, relationships, hasClassicLayout ? 'الإعدادات' : 'لوحة المتابعة');
   const metrics = await readXml(zip, metricsPath);
@@ -176,7 +179,7 @@ async function updateWorkbook(buffer, snapshot) {
     if (!row || !Number.isFinite(value)) throw new Error('تعذر تحديث أرقام لوحة المتابعة.');
     setCell(row, 'B' + number, value);
   }
-  zip.file(metricsPath, serializer.serializeToString(metrics));
+  zip.file(metricsPath, serializer.serializeToString(metrics, { requireWellFormed: true }));
 
   let calc = workbook.getElementsByTagNameNS(SHEET_NS, 'calcPr')[0];
   if (!calc) {
@@ -185,7 +188,7 @@ async function updateWorkbook(buffer, snapshot) {
     workbook.documentElement.insertBefore(calc, extList?.parentNode === workbook.documentElement ? extList : null);
   }
   calc.setAttribute('fullCalcOnLoad', '1');
-  zip.file(workbookPath, serializer.serializeToString(workbook));
+  zip.file(workbookPath, serializer.serializeToString(workbook, { requireWellFormed: true }));
   return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 

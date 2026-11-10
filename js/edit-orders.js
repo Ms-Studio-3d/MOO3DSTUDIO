@@ -201,7 +201,7 @@ function renderEditMaterials() {
   const picker = $('editMaterialPicker');
   const available = (dashboardData.materials || []).filter((material) => !editMaterials.some((row) => row.materialId === material.id));
   picker.innerHTML = '<option value="">اختار خامة من المخزن...</option>' + available.map((material) => (
-    `<option value="${Number(material.id)}">${escapeHtml(material.name)} — ${escapeHtml(material.color || '')} — ${formatNumber(material.remaining)} جم</option>`
+    `<option value="${Number(material.id)}">${escapeHtml(material.name)} — ${escapeHtml(material.color || '')} — ${stockWeightText(material.remaining)} جم</option>`
   )).join('');
   picker.disabled = available.length === 0;
   $('editAddMaterial').disabled = available.length === 0;
@@ -215,10 +215,10 @@ function renderEditMaterials() {
           <span class="material-row-meta">${escapeHtml(detail)}</span>
         </div>
         <input type="text" inputmode="decimal" value="${escapeHtml(row.grams)}" ${row.materialId ? '' : 'readonly'}
-          aria-label="جرامات ${escapeHtml(row.materialName)}" oninput="editMaterials[${index}].grams = this.value" />
+          aria-label="جرامات ${escapeHtml(row.materialName)}" data-action-input="setEditMaterialGrams" data-arg-input="${index}" />
         <span class="material-used-chip">جرام</span>
         <button class="material-remove-btn" type="button" aria-label="حذف ${escapeHtml(row.materialName)}"
-          onclick="removeEditMaterial(${index})">×</button>
+          data-action-click="removeEditMaterial" data-arg-click="${index}">×</button>
       </div>`;
   }).join('') || '<div class="empty-state">أضف خامة واحدة على الأقل.</div>';
 }

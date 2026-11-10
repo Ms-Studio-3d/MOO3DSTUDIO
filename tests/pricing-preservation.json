@@ -3,14 +3,15 @@
   "checks": [
     {
       "file": "js/pricing-core.js",
-      "stopBefore": null,
-      "sha256": "a08717344810b4291cae178ed770b719660bc6faa6045a0ed6ffb339a738cfda"
+      "startAt": "  function calculateMoo3dPricing(",
+      "stopBefore": "    const finalPrice = roundUpByStep(",
+      "sha256": "ac588d9173f6775701d56ff25fa21c6d44d4f2e72eb9eebb3d053a5ce806855a"
     },
     {
       "file": "js/pricing-orders.js",
-      "startAt": "function getMaintenanceCostPerHour()",
-      "stopBefore": "async function saveSale()",
-      "sha256": "9c609cd5ff5336c24bc96c1dc31acd3e62b16aaa45d7f8c5c0829fa703a88d8b"
+      "startAt": "function getAssetHourlyDepreciation(",
+      "stopBefore": "function getMaintenanceCostPerHour(",
+      "sha256": "f7292f0072e7a65e19dc2e8dbbbc6b207feb7ec5ccc5706c61f788c8e74df0b2"
     },
     {
       "file": "js/edit-orders.js",

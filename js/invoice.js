@@ -71,15 +71,15 @@ function renderInvoice(order) {
       <div class="invoice-total">
         <div>
           <span>سعر القطعة تقريبيًا</span>
-          <strong>${formatMoney(order.unitFinalPrice || ((order.finalPrice || 0) / Math.max(1, Number(order.quantity || 1))))}</strong>
+          <strong>${formatMoneyHtml(order.unitFinalPrice || ((order.finalPrice || 0) / Math.max(1, Number(order.quantity || 1))))}</strong>
         </div>
         <div>
           <span>سعر البيع النهائي</span>
-          <strong>${formatMoney(order.finalPrice || 0)}</strong>
+          <strong>${formatMoneyHtml(order.finalPrice || 0)}</strong>
         </div>
         <div>
           <span>المبلغ المحصل</span>
-          <strong>${formatMoney(getOrderPaidAmount(order))}</strong>
+          <strong>${formatMoneyHtml(getOrderPaidAmount(order))}</strong>
         </div>
       </div>
 
