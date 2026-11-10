@@ -10,3 +10,4 @@ coverage/
 .idea/
 .DS_Store
 Thumbs.db
+/docs/test-results/
