@@ -43,6 +43,7 @@ app.once('browser-window-created', (_event, window) => {
       const data = await execute('farmAPI.getDashboardData()');
       assert.equal(data.success, true, data.message);
       assert.equal(data.data.printers.length, 0);
+      assert.equal(data.data.materials.length, 0);
       assert.equal(typeof await execute('window.require'), 'undefined');
       phase = 'renderer security settings';
       const preferences = contents.getLastWebPreferences();
@@ -85,6 +86,12 @@ app.once('browser-window-created', (_event, window) => {
         await waitFor("isModalOpen('businessDashboardModal')");
       }
       await execute("document.querySelector('#businessDashboardModal [data-action-click=closeBusinessDashboard]').click()");
+
+      phase = 'enable the order material picker';
+      const material = await execute("farmAPI.saveMaterial({ name: 'Window smoke PLA', weight: 1000, remaining: 1000, price: 1000 })");
+      assert.equal(material.success, true, material.message);
+      await execute('loadDashboardData()');
+      await waitFor("Boolean(document.querySelector('#materialUsagePicker:enabled option:not([value=\"\"])'))");
 
       phase = 'viewport setup';
       contents.debugger.attach('1.3');

@@ -40,6 +40,17 @@ async function run() {
       initiallyOpen: false, opened: false, devToolsWindow: false });
     console.log('PASS installed app keeps DevTools disabled and renderer sandbox enabled');
 
+    const setup = await page.evaluate(async () => {
+      const printer = await window.farmAPI.savePrinter({ name: 'Release test printer', hourlyDepreciation: 10 });
+      if (!printer.success) return printer;
+      const material = await window.farmAPI.saveMaterial({ name: 'Release test PLA', weight: 1000, remaining: 1000, price: 1000 });
+      if (!material.success) return material;
+      await loadDashboardData();
+      return { success: true, printerId: String(dashboardData.printers[0].id), materialId: String(dashboardData.materials[0].id) };
+    });
+    assert.equal(setup.success, true, setup.message);
+    assert.ok(await page.locator('#materialUsagePicker').isEnabled(), 'The test material enables the order picker');
+
     const viewport = await window.evaluate(async (win) => {
       if (win.isMaximized()) {
         await new Promise((resolve) => { win.once('unmaximize', resolve); win.unmaximize(); });
@@ -54,15 +65,6 @@ async function run() {
     assert.deepEqual(await page.evaluate(unreachableControls, settingsControls), [], 'Settings controls');
     await page.locator('#settingsModal [data-action-click="closeSettingsModal"]').click();
 
-    const setup = await page.evaluate(async () => {
-      const printer = await window.farmAPI.savePrinter({ name: 'Release test printer', hourlyDepreciation: 10 });
-      if (!printer.success) return printer;
-      const material = await window.farmAPI.saveMaterial({ name: 'Release test PLA', weight: 1000, remaining: 1000, price: 1000 });
-      if (!material.success) return material;
-      await loadDashboardData();
-      return { success: true, printerId: String(dashboardData.printers[0].id), materialId: String(dashboardData.materials[0].id) };
-    });
-    assert.equal(setup.success, true, setup.message);
     const itemName = 'Release installer smoke';
     await page.locator('#itemName').fill(itemName);
     await page.locator('#selectedPrinter').selectOption(setup.printerId);
