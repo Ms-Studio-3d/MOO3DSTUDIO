@@ -186,7 +186,7 @@ async function openEditSale(code) {
   setValue('editPrintMinutes', printParts.minutes);
   setValue('editManualMinutes', order.manualMinutes || 0);
   setValue('editFinalPrice', order.finalPrice || 0);
-  $('editFinalPrice').readOnly = false;
+  editPrice = { weightsKey: null, suggestion: null, basePrice: getValue('editFinalPrice') };
   setValue('editWasteWeight', order.wasteWeight || 0);
   $('editLegacyWasteHint').hidden = !(Number(order.wasteWeight) > 0 &&
     originalEditMaterials.every((row) => row.wasteGrams == null));
@@ -200,7 +200,7 @@ async function openEditSale(code) {
 let editMaterialRequest = 0;
 let originalEditMaterials = [];
 let editMaterials = [];
-let manualEditPrice = '';
+let editPrice;
 
 function renderEditMaterials() {
   const picker = $('editMaterialPicker');
@@ -320,16 +320,8 @@ function getEditCostState(oldOrder, printHours, manualMinutes, printerId) {
   };
 }
 
-function getEditPriceState(order, edit) {
-  const field = $('editFinalPrice');
-  const autoPrice = Boolean(edit.usage && edit.validWaste && !edit.sameWaste);
-  if (autoPrice && !field.readOnly) manualEditPrice = field.value;
-  if (!autoPrice && field.readOnly) field.value = manualEditPrice;
-  field.readOnly = autoPrice;
-
+function suggestEditPrice(order, edit) {
   const savedPrice = Number(order.finalPrice || 0);
-  if (!autoPrice) return { finalPrice: toPositiveNumber(field.value, savedPrice) };
-
   const { costs } = edit;
   const oldTotalCost = Number(order.totalCost || 0);
   const oldAddOns = Number(order.accessoriesCost || 0) + Number(order.shippingCost || 0);
@@ -350,9 +342,8 @@ function getEditPriceState(order, edit) {
     roundingStep: getConfigNumber('roundingStep')
   });
   const calculatedPrice = roundMoney(pricing.finalPrice);
-  const onlyReducedWaste = edit.sameMaterials && edit.sameTime && costs.wasteWeight < Number(order.wasteWeight);
-  const finalPrice = onlyReducedWaste ? Math.min(calculatedPrice, savedPrice) : calculatedPrice;
-  field.value = finalPrice;
+  const reducedStockCost = edit.sameTime && costs.totalCost < oldTotalCost;
+  const finalPrice = reducedStockCost ? Math.min(calculatedPrice, savedPrice) : calculatedPrice;
   return {
     finalPrice,
     automatic: {
@@ -362,6 +353,36 @@ function getEditPriceState(order, edit) {
       roundedAdjustment: roundMoney(Math.max(0, finalPrice - pricing.priceAfterDiscount))
     }
   };
+}
+
+function getEditPriceState(order, edit) {
+  const field = $('editFinalPrice');
+  if (edit.usage && edit.validWaste) {
+    const weightsKey = JSON.stringify([edit.costs.wasteWeight, ...edit.usage.map((row) =>
+      [row.materialId, row.preserveRowId, row.grams])]);
+    const weightsChanged = editPrice.weightsKey !== weightsKey;
+    const previousSuggestion = editPrice.suggestion;
+    editPrice.weightsKey = weightsKey;
+
+    if (edit.sameMaterials && edit.sameWaste) {
+      if (weightsChanged && previousSuggestion) field.value = editPrice.basePrice;
+      editPrice.suggestion = null;
+      editPrice.basePrice = field.value;
+    } else {
+      const suggestion = suggestEditPrice(order, edit);
+      const followingSuggestion = previousSuggestion && toNumber(field.value, NaN) === previousSuggestion.finalPrice;
+      if (weightsChanged || (followingSuggestion && suggestion.finalPrice !== previousSuggestion.finalPrice)) {
+        field.value = suggestion.finalPrice;
+      }
+      editPrice.suggestion = suggestion;
+    }
+  }
+
+  const entered = toNumber(field.value, NaN);
+  const finalPrice = Number.isFinite(entered) && entered >= 0 ? roundMoney(entered) : null;
+  const suggestion = editPrice.suggestion;
+  const manualFinalPrice = finalPrice !== (suggestion?.finalPrice ?? Number(order.finalPrice || 0));
+  return { finalPrice, suggestion, manualFinalPrice };
 }
 
 function updateEditCostPreview() {
@@ -374,13 +395,17 @@ function updateEditCostPreview() {
     Number(getValue('editPrinter'))
   );
   const { usage, validWaste, costs } = edit;
-  const { finalPrice, automatic } = getEditPriceState(order, edit);
+  const { finalPrice, suggestion } = getEditPriceState(order, edit);
   if (!validWaste) {
     setText('editCostPreview', 'أدخل وزن هالك صالحًا بالجرام.');
     return;
   }
   if (!usage) {
     setText('editCostPreview', 'أدخل وزنًا أكبر من صفر لكل خامة.');
+    return;
+  }
+  if (finalPrice === null) {
+    setText('editCostPreview', 'أدخل سعر بيع صالحًا.');
     return;
   }
   const paid = Number(order.paidAmount ?? order.finalPrice);
@@ -392,7 +417,7 @@ function updateEditCostPreview() {
     `إجمالي التكلفة: ${formatMoney(costs.totalCost)}`,
     `صافي الربح: ${formatMoney(finalPrice - costs.totalCost - costs.directAddOnsCost)}`
   ];
-  if (automatic) details.push(`سعر البيع بعد تعديل الهالك: ${formatMoney(finalPrice)}`);
+  if (suggestion) details.push(`سعر البيع المقترح: ${formatMoney(suggestion.finalPrice)}`);
   if (cashChange < 0) details.push(`هيتخصم من الدرج ${formatMoney(-cashChange)} عند الحفظ.`);
   if (cashChange > 0) details.push(`هيتضاف للدرج ${formatMoney(cashChange)} عند الحفظ.`);
   setText('editCostPreview', details.join(' · '));
@@ -460,7 +485,12 @@ async function saveEditSale() {
       showToast('أدخل وزنًا أكبر من صفر لكل خامة في الأوردر', 'error');
       return;
     }
-    const { finalPrice, automatic } = getEditPriceState(oldOrder, edit);
+    const { finalPrice, suggestion, manualFinalPrice } = getEditPriceState(oldOrder, edit);
+    if (finalPrice === null) {
+      showToast('أدخل سعر بيع صالحًا', 'error');
+      $('editFinalPrice')?.focus();
+      return;
+    }
     const stockEdited = !sameMaterials || !sameWaste;
     const unchangedCostInputs = !stockEdited && sameTime;
 
@@ -468,7 +498,8 @@ async function saveEditSale() {
       recalculated.totalCost +
       recalculated.directAddOnsCost;
 
-    if (finalPrice < minimumNoLossPrice && (!stockEdited || finalPrice !== Number(oldOrder.finalPrice || 0))) {
+    if (!manualFinalPrice && finalPrice < minimumNoLossPrice &&
+      (finalPrice !== Number(oldOrder.finalPrice || 0) || (!stockEdited && !sameTime))) {
       showToast(
         `سعر البيع أقل من التكلفة الجديدة: الحد الأدنى ${formatMoney(minimumNoLossPrice)}`,
         'error'
@@ -517,6 +548,7 @@ async function saveEditSale() {
   roundedAdjustment: 0,
 
   finalPrice,
+  manualFinalPrice,
   profit,
 
   unitFinalPrice: roundMoney(finalPrice / quantity),
@@ -528,8 +560,8 @@ async function saveEditSale() {
   materialUsage: usage
 };
 
-    if (automatic) {
-      Object.assign(payload, automatic);
+    if (suggestion && !manualFinalPrice) {
+      Object.assign(payload, suggestion.automatic);
     } else if (sameTime && finalPrice === Number(oldOrder.finalPrice || 0)) {
       payload.priceBeforeDiscount = oldOrder.priceBeforeDiscount;
       payload.discountValue = oldOrder.discountValue;
