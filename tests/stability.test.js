@@ -311,14 +311,28 @@ async function workerBackup(reason) {
     assert.equal(full().materials[0].price / full().materials[0].weight, 0.8);
   });
   await test('automatic rotation keeps protected backups', async () => {
+    fresh('backup-rotation');
     const backupsDir = path.join(h.documents, 'MOO3DSTUDIO/Backups');
-    fs.mkdirSync(backupsDir, { recursive: true });
-    for (let i = 0; i < 12; i++) fs.writeFileSync(path.join(backupsDir, `moo3d-backup-old-${i}.json`), '{}');
     const protectedPath = path.join(backupsDir, 'Protected');
-    const protectedNames = fs.readdirSync(protectedPath);
+    fs.mkdirSync(protectedPath, { recursive: true });
+    fs.writeFileSync(path.join(protectedPath, 'moo3d-backup-protected.json'), JSON.stringify(full()));
+    const now = Date.now();
+    for (let i = 0; i < 12; i++) {
+      const file = path.join(backupsDir, `moo3d-backup-old-${i}.json`);
+      const timestamp = new Date(now - (12 - i) * 60_000);
+      fs.writeFileSync(file, '{}');
+      fs.utimesSync(file, timestamp, timestamp);
+    }
+    const protectedFiles = () => fs.readdirSync(protectedPath).sort().map((name) => [name, fs.readFileSync(path.join(protectedPath, name), 'utf8')]);
+    const protectedBefore = protectedFiles();
+    assert.ok(protectedBefore.length > 0);
     await workerBackup('rotation-test');
-    assert.deepEqual(fs.readdirSync(protectedPath), protectedNames);
-    assert.equal(fs.readdirSync(backupsDir).filter((name) => /^moo3d-backup-.*\.json$/.test(name)).length, 10);
+    assert.deepEqual(protectedFiles(), protectedBefore);
+    const retained = fs.readdirSync(backupsDir).filter((name) => /^moo3d-backup-old-\d+\.json$/.test(name));
+    assert.deepEqual(retained.sort(), Array.from({ length: 9 }, (_, i) => `moo3d-backup-old-${i + 3}.json`).sort());
+    const automatic = fs.readdirSync(backupsDir).filter((name) => /^moo3d-backup-.*\.json$/.test(name));
+    assert.equal(automatic.length, 10);
+    assert.ok(automatic.some((name) => name.startsWith('moo3d-backup-rotation-test-')));
   });
   await test('archived original printer does not block editing historic sale metadata', async () => {
     fresh('archived-printer');
@@ -340,12 +354,35 @@ async function workerBackup(reason) {
     assert.equal(result.success, true, result.message);
     const restoredMaterial = full().materials.find((m) => m.name === originalMaterialName);
     const before = restoredMaterial.remaining;
+    const collectedBefore = h.database.getDashboardData().meta.summary.collected;
     const converted = await h.farmAPI.convertQuoteToOrder('Q-1001');
     assert.equal(converted.success, true, converted.message);
     assert.equal(stock(restoredMaterial.id), before - 100);
-    const code = full().orders[0].code;
-    await h.farmAPI.deleteOrder(code);
+    const order = full().orders[0];
+    assert.deepEqual([order.status, order.paymentStatus, order.paidAmount], ['delivered', 'collected', order.finalPrice]);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, collectedBefore + order.finalPrice);
+    assert.equal((await h.farmAPI.convertQuoteToOrder('Q-1001')).success, false);
+    assert.equal(stock(restoredMaterial.id), before - 100);
+    await h.farmAPI.deleteOrder(order.code);
     assert.equal(full().quotes[0].status, 'open');
+  });
+  await test('cancelling excludes a paid order from cash without returning stock; deletion returns stock once', async () => {
+    fresh('cancel-delete');
+    const sale = sampleOrder(h.database);
+    const materialId = sale.materialUsage[0].materialId;
+    assert.equal((await h.farmAPI.createOrder(sale)).success, true);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, sale.finalPrice);
+    const cancelled = await h.farmAPI.updateOrder({ ...sale, status: 'cancelled', replaceMaterialUsage: false });
+    assert.equal(cancelled.success, true, cancelled.message);
+    assert.equal(getOrder(sale.code).status, 'cancelled');
+    assert.equal(stock(materialId), 900);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, 0);
+    assert.equal((await h.farmAPI.deleteOrder(sale.code)).success, true);
+    await h.farmAPI.deleteOrder(sale.code);
+    assert.equal(getOrder(sale.code), undefined);
+    assert.equal(stock(materialId), 1000);
+    assert.equal(full().stockMovements.filter((move) => move.movementType === 'return').length, 1);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, 0);
   });
   await test('editing saved materials updates stock once and rejects stale or excessive changes', async () => {
     fresh('edit-materials');

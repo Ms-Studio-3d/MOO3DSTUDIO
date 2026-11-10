@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app } = require('electron');
+const { orderControls, settingsControls, unreachableControls } = require('./release-scroll.cjs');
 
 const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'moo3d-window-'));
 for (const key of ['appData', 'documents']) {
@@ -74,14 +75,26 @@ app.once('browser-window-created', (_event, window) => {
       await waitFor("isModalOpen('reportsModal')");
       await execute("document.querySelector('#reportsModal [data-action-click=closeReports]').click()");
       await waitFor("isModalOpen('businessDashboardModal')");
+      for (const [openAction, modal, closeAction] of [
+        ['openDashboardPurchases', 'purchasesModal', 'closePurchasesModal'],
+        ['openDashboardAssets', 'assetsModal', 'closeAssetsModal']
+      ]) {
+        await execute(`document.querySelector('#businessDashboardModal [data-action-click=${openAction}]').click()`);
+        await waitFor(`isModalOpen('${modal}')`);
+        await execute(`document.querySelector('#${modal} [data-action-click=${closeAction}]').click()`);
+        await waitFor("isModalOpen('businessDashboardModal')");
+      }
       await execute("document.querySelector('#businessDashboardModal [data-action-click=closeBusinessDashboard]').click()");
 
       phase = 'viewport setup';
       contents.debugger.attach('1.3');
-      for (const [width, height] of [[1024, 600], [1200, 720], [1366, 768], [1920, 1080]]) {
+      for (const [width, height] of [[850, 540], [1024, 600], [1200, 720], [1366, 768], [1920, 1080]]) {
         phase = width + 'x' + height + ' viewport';
         await contents.debugger.sendCommand('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
         await waitFor('innerWidth === ' + width + ' && innerHeight === ' + height);
+        if (width === 850) {
+          assert.deepEqual(await execute(`(${unreachableControls})(${JSON.stringify(orderControls)})`), [], 'Order inputs, totals and navigation reachable at minimum viewport');
+        }
         const result = await execute([
           '(() => {',
           '  const action = document.querySelector("[data-action-click=saveSale]");',
@@ -92,6 +105,9 @@ app.once('browser-window-created', (_event, window) => {
         ].join('\n'));
         assert.ok(result, 'Sale action reachable at ' + width + 'x' + height);
         await execute("document.querySelector('[data-view=settings]').click()");
+        if (width === 850) {
+          assert.deepEqual(await execute(`(${unreachableControls})(${JSON.stringify(settingsControls)})`), [], 'Settings reachable at minimum viewport');
+        }
         const settings = await execute([
           '(() => {',
           '  const button = document.querySelector("[data-action-click=saveSettings]");',
