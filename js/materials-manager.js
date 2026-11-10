@@ -97,7 +97,12 @@ async function saveMaterialAction() {
 }
 
 async function deleteMaterialAction(id) {
-  const confirmed = await askConfirm('هل تريد حذف هذه الخامة؟ لو مستخدمة في أوردرات سيتم أرشفتها فقط.');
+  const material = getMaterialById(id);
+  if (!material) return;
+  const confirmed = await askConfirm(
+    'لو الخامة مستخدمة في أوردرات، هتتأرشف وتفضل بياناتها موجودة في الأوردرات القديمة.',
+    { title: `حذف خامة ${material.name}؟`, action: 'حذف الخامة', danger: true }
+  );
 
   if (!confirmed) return;
 

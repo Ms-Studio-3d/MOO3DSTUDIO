@@ -26,7 +26,7 @@ function createAppHarness(directory, { withSampleMaterials = true } = {}) {
     app: { getPath: (name) => paths[name], setPath: (name, value) => { paths[name] = value; },
       disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true, whenReady: () => ({ then() {} }), on() {}, quit() {} },
     BrowserWindow: Object.assign(function () {}, { getAllWindows: () => [] }),
-    shell: { openExternal: async () => {}, openPath: async () => '' },
+    shell: { openExternal: async () => {}, openPath: async () => '', showItemInFolder: (file) => { harness.revealedFile = file; } },
     clipboard: { writeText: (text) => { harness.clipboardText = text; } },
     ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     dialog: { showErrorBox() {}, showMessageBox: async (...args) => {

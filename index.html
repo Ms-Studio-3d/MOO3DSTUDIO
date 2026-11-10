@@ -513,6 +513,7 @@
         <div class="inline-actions">
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportSalesCSV()">مبيعات CSV</button>
           <button type="button" class="btn btn-secondary btn-auto" onclick="copyOrdersForTracking()">نسخ لشيت المتابعة</button>
+          <button id="exportTrackingButton" type="button" class="btn btn-secondary btn-auto" onclick="exportTrackingWorkbook()">تصدير شيت المتابعة</button>
           <button type="button" class="btn btn-secondary btn-auto" onclick="exportStockCSV()">مخزون CSV</button>
         </div>
       </div>
@@ -1042,6 +1043,17 @@
       <div class="inline-actions sale-confirm-actions">
         <button class="btn btn-secondary" type="submit" value="cancel" autofocus>إلغاء</button>
         <button class="btn btn-primary" type="submit" value="confirm">تسجيل الأوردر</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="actionConfirmDialog" class="sale-confirm-dialog" aria-labelledby="actionConfirmTitle" aria-describedby="actionConfirmDetails">
+    <form method="dialog">
+      <h2 id="actionConfirmTitle">تأكيد</h2>
+      <div id="actionConfirmDetails"></div>
+      <div class="inline-actions sale-confirm-actions">
+        <button class="btn btn-secondary" type="submit" value="cancel" autofocus>إلغاء</button>
+        <button id="actionConfirmButton" class="btn btn-primary" type="submit" value="confirm">متابعة</button>
       </div>
     </form>
   </dialog>

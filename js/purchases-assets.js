@@ -169,7 +169,8 @@ async function savePurchaseAction() {
 }
 
 async function deletePurchaseAction(id) {
-  const confirmed = await askConfirm('هل تريد حذف هذه المشتريات؟ لو كانت خامة سيتم خصمها من المخزون.');
+  const confirmed = await askConfirm('لو المشتريات مرتبطة بخامة، الكمية المضافة هتتخصم من المخزون.',
+    { title: 'حذف المشتريات؟', action: 'حذف المشتريات', danger: true });
   if (!confirmed) return;
 
   const response = await window.farmAPI.deletePurchase(id);
@@ -314,7 +315,8 @@ async function saveAssetAction() {
 }
 
 async function deleteAssetAction(id) {
-  const confirmed = await askConfirm('هل تريد حذف هذا الأصل؟');
+  const confirmed = await askConfirm('حذف الأصل هيشيله من قائمة الأصول.',
+    { title: 'حذف الأصل؟', action: 'حذف الأصل', danger: true });
   if (!confirmed) return;
 
   const response = await window.farmAPI.deleteAsset(id);

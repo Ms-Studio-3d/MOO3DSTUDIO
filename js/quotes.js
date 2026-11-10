@@ -77,7 +77,8 @@ function closeQuotesModal() {
 async function convertQuoteToOrder(code) {
   if (convertingQuote) return;
 
-  const confirmed = await askConfirm('تحويل عرض السعر لأوردر سيخصم الخامات من المخزون. هل تريد المتابعة؟');
+  const confirmed = await askConfirm('تحويل عرض السعر لأوردر هيخصم الخامات من المخزون.',
+    { title: 'تحويل عرض السعر؟', action: 'تحويل لأوردر' });
   if (!confirmed) return;
 
   convertingQuote = true;
@@ -100,7 +101,8 @@ async function convertQuoteToOrder(code) {
 async function deleteQuoteAction(code) {
   if (deletingQuote) return;
 
-  const confirmed = await askConfirm('هل تريد حذف عرض السعر؟');
+  const confirmed = await askConfirm('هيتم إزالة العرض من قائمة عروض الأسعار.',
+    { title: 'حذف عرض السعر؟', action: 'حذف العرض', danger: true });
   if (!confirmed) return;
 
   deletingQuote = true;

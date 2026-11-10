@@ -148,36 +148,56 @@ function exportSalesCSV() {
   downloadTextFile(`sales-${new Date().toISOString().slice(0, 10)}.csv`, `\uFEFF${csv}`, 'text/csv;charset=utf-8');
 }
 
-async function copyOrdersForTracking() {
+async function getTrackingRows() {
   const response = await window.farmAPI.getDataPage('orders', { includeAll: true });
-  if (!response?.success) {
-    showToast(response?.message || 'تعذر تحميل الأوردرات', 'error');
-    return;
-  }
-  const orders = response.data.items.filter((order) => !isCancelled(order));
-  if (!orders.length || orders.length > 500) {
-    showToast(orders.length ? 'نسخة الشيت تقبل حتى 500 أوردر' : 'لا توجد أوردرات للنسخ', 'error');
-    return;
-  }
-  const excelText = (value) => {
-    const text = String(value ?? '').replace(/[\t\r\n]+/g, ' ').trim();
-    return /^[=+@-]/.test(text) ? "'" + text : text;
-  };
-  const rows = orders.map((order) => [
-    excelText(order.code),
+  if (!response?.success) throw new Error(response?.message || 'تعذر تحميل الأوردرات');
+  return response.data.items.filter((order) => !isCancelled(order)).map((order) => [
+    String(order.code || ''),
     String(order.date || '').slice(0, 10),
-    excelText(order.itemName),
-    excelText(order.customerName),
-    formatNumber(order.finalPrice),
-    formatNumber(Number(order.totalCost || 0) + Number(order.accessoriesCost || 0) + Number(order.shippingCost || 0)),
-    formatNumber(getOrderPaidAmount(order))
-  ].join('\t'));
-  const copied = await window.farmAPI.copyTrackingRows(rows.join('\r\n'));
-  if (!copied?.success) {
-    showToast(copied?.message || 'تعذر نسخ الأوردرات', 'error');
-    return;
+    String(order.itemName || ''),
+    String(order.customerName || ''),
+    roundMoney(order.finalPrice),
+    roundMoney(Number(order.totalCost || 0) + Number(order.accessoriesCost || 0) + Number(order.shippingCost || 0)),
+    roundMoney(getOrderPaidAmount(order))
+  ]);
+}
+
+async function copyOrdersForTracking() {
+  try {
+    const rows = await getTrackingRows();
+    if (!rows.length || rows.length > 500) {
+      throw new Error(rows.length ? 'نسخة الشيت تقبل حتى 500 أوردر' : 'لا توجد أوردرات للنسخ');
+    }
+    const excelText = (value) => {
+      const text = value.replace(/[\t\r\n]+/g, ' ').trim();
+      return /^[=+@-]/.test(text) ? "'" + text : text;
+    };
+    const tsv = rows.map((row) => [
+      ...row.slice(0, 4).map(excelText),
+      ...row.slice(4).map(formatNumber)
+    ].join('\t')).join('\r\n');
+    const copied = await window.farmAPI.copyTrackingRows(tsv);
+    if (!copied?.success) throw new Error(copied?.message || 'تعذر نسخ الأوردرات');
+    showToast(`تم نسخ ${rows.length} أوردر. الصق البيانات في A5 في تبويب استيراد البرنامج.`);
+  } catch (error) {
+    showToast(error.message || 'تعذر نسخ الأوردرات', 'error');
   }
-  showToast(`تم نسخ ${orders.length} أوردر. الصق البيانات في A5 في تبويب استيراد البرنامج.`);
+}
+
+async function exportTrackingWorkbook() {
+  const button = $('exportTrackingButton');
+  if (button.disabled) return;
+  button.disabled = true;
+  try {
+    const rows = await getTrackingRows();
+    const response = await window.farmAPI.exportTrackingWorkbook(rows);
+    if (!response?.success) throw new Error(response?.message || 'تعذر تصدير ملف المتابعة');
+    showToast(`تم تحديث ملف المتابعة في المستندات (${rows.length} أوردر)`);
+  } catch (error) {
+    showToast(error.message || 'تعذر تصدير ملف المتابعة', 'error');
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function exportStockCSV() {
@@ -239,7 +259,8 @@ async function importBackupFromFile(event) {
     const text = await file.text();
     const data = JSON.parse(text);
 
-    const confirmed = await askConfirm('استيراد النسخة الاحتياطية سيستبدل كل البيانات الحالية. هل تريد المتابعة؟');
+    const confirmed = await askConfirm('بيانات النسخة الاحتياطية هتحل محل البيانات الحالية. هيتحفظ Backup أمان قبل الاستبدال.',
+      { title: 'استيراد النسخة الاحتياطية؟', action: 'استيراد', danger: true });
     if (!confirmed) return;
 
     const response = await window.farmAPI.importBackup(data);

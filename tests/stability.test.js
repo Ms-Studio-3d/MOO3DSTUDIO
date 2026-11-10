@@ -63,6 +63,7 @@ async function workerBackup(reason) {
     assert.equal((await h.farmAPI.deleteOrder(order.code)).success, true);
     assert.equal(stock(materialId), 1000);
     assert.equal(getOrder(order.code), undefined);
+    assert.equal((await h.farmAPI.getDashboardData()).data.meta.summary.collected, 0);
   });
   await test('repeated delete cannot credit stock twice', async () => {
     await h.farmAPI.deleteOrder(order.code);
@@ -119,28 +120,19 @@ async function workerBackup(reason) {
     assert.equal((await h.farmAPI.resetBusinessData({})).success, false);
     assert.deepEqual(full().materials, before.materials);
   });
-  await test('native reset cancellation leaves every record untouched', async () => {
-    const before = full(); h.dialogBehavior = () => ({ response: 0 });
-    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' });
-    assert.equal(result.data.cancelled, true);
+  await test('typed reset phrase alone leaves every record untouched', async () => {
+    const before = full();
+    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: false });
+    assert.equal(result.success, false);
     assert.deepEqual(full().config, before.config);
     assert.deepEqual(full().materials, before.materials);
-    h.dialogBehavior = null;
-  });
-  await test('other IPC writes are gated while reset confirmation is open', async () => {
-    let release;
-    h.dialogBehavior = () => new Promise((resolve) => { release = resolve; });
-    const reset = h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' });
-    assert.equal((await h.farmAPI.saveConfig({ openingCash: '999' })).success, false);
-    release({ response: 0 }); await reset;
-    h.dialogBehavior = null;
   });
   await test('failed safety backup blocks reset before any DELETE', async () => {
     fresh('backup-failure');
     const before = full();
     fs.mkdirSync(path.join(h.documents, 'MOO3DSTUDIO/Backups'), { recursive: true });
     fs.writeFileSync(path.join(h.documents, 'MOO3DSTUDIO/Backups/Protected'), 'not a directory');
-    assert.equal((await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' })).success, false);
+    assert.equal((await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true })).success, false);
     assert.deepEqual(full().materials, before.materials);
     assert.deepEqual(full().config, before.config);
   });
@@ -154,7 +146,7 @@ async function workerBackup(reason) {
     const order = sampleOrder(h.database); await h.farmAPI.createOrder(order);
     const before = full();
     h.database.getDb().exec("CREATE TRIGGER block_reset BEFORE DELETE ON materials BEGIN SELECT RAISE(ABORT, 'test failure'); END;");
-    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' });
+    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true });
     assert.equal(result.success, false);
     assert.deepEqual(full().orders, before.orders);
     assert.deepEqual(full().materials, before.materials);
@@ -167,7 +159,7 @@ async function workerBackup(reason) {
     fresh('reset-defaults');
     await h.farmAPI.createOrder(sampleOrder(h.database));
     original = full();
-    resetResult = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة' });
+    resetResult = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true });
     assert.equal(resetResult.success, true, resetResult.message);
     const after = full();
     for (const field of ['orders', 'materials', 'quotes', 'purchases', 'stockMovements', 'orderMaterials']) assert.equal(after[field].length, 0, field);
@@ -210,7 +202,7 @@ async function workerBackup(reason) {
     assert.equal(restored.materials.find((m) => m.name === original.materials[0].name).remaining, original.materials[0].remaining);
   });
   await test('opt-in full reset removes assets/printers, hours and restarts code numbers', async () => {
-    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', clearPrinters: true, clearAssets: true, resetMachineHours: true, restartCodes: true });
+    const result = await h.farmAPI.resetBusinessData({ confirmation: 'بداية جديدة', confirmed: true, clearPrinters: true, clearAssets: true, resetMachineHours: true, restartCodes: true });
     assert.equal(result.success, true, result.message);
     assert.equal(full().printers.length, 0); assert.equal(full().assets.length, 0);
     assert.equal(full().config.baseMachineHours, '0'); assert.equal(full().config.lastMaintenanceAtHours, '0');
@@ -314,6 +306,34 @@ async function workerBackup(reason) {
     vm.runInContext('showToast = () => {};', renderer);
     await vm.runInContext('copyOrdersForTracking()', renderer);
     assert.equal(h.clipboardText, [active.code, active.date, "'=1+2", 'عميل اختبار', '320.00', '173.65', '320.00'].join('\t'));
+  });
+  await test('exports Excel to Documents and refreshes only the imported rows', async () => {
+    fresh('tracking-workbook');
+    const rows = [
+      ['ORD-1001', '2026-11-10', '=1+2', 'عميل', 150, 83.6, 120],
+      ['ORD-1002', '2026-11-11', 'أوردر تاني', '', 90, 50, 90]
+    ];
+    const first = await h.farmAPI.exportTrackingWorkbook(rows);
+    assert.equal(first.success, true, first.message);
+    const file = path.join(h.documents, 'MOO3DSTUDIO', 'متابعة_MOO3D_Farm.xlsx');
+    assert.equal(first.data, file);
+    assert.equal(h.revealedFile, file);
+    const JSZip = require('jszip');
+    const initial = await JSZip.loadAsync(fs.readFileSync(file));
+    const tabPath = 'xl/worksheets/sheet2.xml';
+    const initialTab = await initial.file(tabPath).async('string');
+    assert.ok(initialTab.includes('ORD-1002') && initialTab.includes('83.6') && initialTab.includes('inlineStr'));
+    const locked = path.join(path.dirname(file), '~$' + path.basename(file));
+    fs.writeFileSync(locked, '');
+    assert.equal((await h.farmAPI.exportTrackingWorkbook(rows.slice(0, 1))).success, false);
+    fs.unlinkSync(locked);
+    const second = await h.farmAPI.exportTrackingWorkbook(rows.slice(0, 1));
+    assert.equal(second.success, true, second.message);
+    const refreshed = await JSZip.loadAsync(fs.readFileSync(file));
+    const refreshedTab = await refreshed.file(tabPath).async('string');
+    assert.ok(refreshedTab.includes('ORD-1001') && !refreshedTab.includes('ORD-1002'));
+    assert.equal(await refreshed.file('xl/worksheets/sheet1.xml').async('string'),
+      await initial.file('xl/worksheets/sheet1.xml').async('string'));
   });
   console.log(`\n${passed} stability scenarios passed through actual preload/main/SQLite, with native OS dialogs mocked.`);
 })().catch((error) => { console.error(error); process.exitCode = 1; }).finally(() => {

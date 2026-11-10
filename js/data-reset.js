@@ -29,22 +29,35 @@ async function executeFreshStart() {
   freshStartRunning = true;
   const controls = Array.from($('freshStartModal')?.querySelectorAll('input, button') || []);
   controls.forEach((control) => { control.disabled = true; });
-  setText('resetResult', 'جاري التأكيد وتأمين نسخة من بياناتك قبل أي مسح...');
+  setText('resetResult', '');
   let completed = false;
   try {
-    const response = await window.farmAPI.resetBusinessData({
+    const options = {
       confirmation: getTrimmedValue('resetConfirmation'),
       clearPrinters: !!$('resetClearPrinters')?.checked,
       clearAssets: !!$('resetClearAssets')?.checked,
       resetMachineHours: !!$('resetMachineHours')?.checked,
       restartCodes: !!$('resetRestartCodes')?.checked
-    });
+    };
+    const confirmed = await askConfirm([
+      'هيتم مسح المبيعات وعروض الأسعار والمشتريات والخامات وحركات المخزون وتصفير كاش البداية.',
+      options.clearPrinters ? 'هيتم حذف الطابعات.' : 'هيتم الاحتفاظ بالطابعات.',
+      options.clearAssets ? 'هيتم حذف الأصول.' : 'هيتم الاحتفاظ بالأصول.',
+      options.resetMachineHours ? 'هيتم تصفير ساعات الماكينة وآخر صيانة.' : 'هيتم الاحتفاظ بساعات الماكينة وآخر صيانة.',
+      options.restartCodes ? 'أرقام الأوردرات هتبدأ من ORD-1001.' : 'أرقام الأوردرات هتكمل من آخر رقم.',
+      'هيتم حفظ نسخة أمان قبل المسح.'
+    ], { title: 'تأكيد البداية الجديدة', action: 'حفظ نسخة أمان ثم المسح', danger: true });
+    if (!confirmed) {
+      setText('resetResult', 'تم الإلغاء.');
+      return;
+    }
+    setText('resetResult', 'جاري حفظ نسخة أمان وتنفيذ البداية الجديدة...');
+    const response = await window.farmAPI.resetBusinessData({ ...options, confirmed: true });
     if (!response?.success) {
       setText('resetResult', response?.message || 'لم تتم البداية الجديدة. راجع الرسالة ولا تعِد المحاولة دون التحقق.');
       showToast(response?.message || 'تعذر تنفيذ البداية الجديدة', 'error');
       return;
     }
-    if (response.data?.cancelled) { setText('resetResult', 'تم الإلغاء. بياناتك لم تتغير.'); return; }
     completed = true;
     // Discard forms/cached identities that belong to the old dataset.
     editingOrderCode = null;

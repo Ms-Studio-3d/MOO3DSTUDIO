@@ -1896,17 +1896,10 @@ function updateOrder(payload) {
 }
 
 function deleteOrder(code) {
-  const order = db.prepare('SELECT id, code FROM orders WHERE code = ?').get(String(code || '').trim());
-
-  if (!order) return;
-
-  const materials = db.prepare(`
-    SELECT material_id AS materialId, material_name AS materialName, grams
-    FROM order_materials
-    WHERE order_id = ?
-  `).all(order.id);
-
   const transaction = db.transaction(() => {
+    const order = db.prepare('SELECT id, code FROM orders WHERE code = ?').get(String(code || '').trim());
+    if (!order) return;
+    const materials = getOrderMaterials(order.code);
     for (const item of materials) {
       if (item.materialId) {
         db.prepare(`

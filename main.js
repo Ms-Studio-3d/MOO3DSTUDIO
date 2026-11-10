@@ -33,6 +33,7 @@ const {
 } = require('./database');
 const { normalizeResetOptions } = require('./reset-options');
 const { writeVerifiedBackup } = require('./backup-safety');
+const { saveTrackingWorkbook } = require('./tracking-workbook');
 const { productName: PRODUCT_NAME } = require('./package.json');
 const DATA_DIRECTORY_NAME = 'MOO3DSTUDIO';
 const BACKUP_APP_NAME = 'moo3dstudio';
@@ -73,6 +74,7 @@ const CHANNELS = {
   getDataPage: 'db:getDataPage',
   getOrderMaterials: 'db:getOrderMaterials',
   copyTrackingRows: 'clipboard:copyTrackingRows',
+  exportTrackingWorkbook: 'tracking:exportWorkbook',
   getNextOrderCode: 'db:getNextOrderCode',
   getNextQuoteCode: 'db:getNextQuoteCode',
   saveConfig: 'db:saveConfig',
@@ -93,8 +95,7 @@ const CHANNELS = {
   exportBackup: 'db:exportBackup',
   importBackup: 'db:importBackup',
   resetBusinessData: 'db:resetBusinessData',
-  openSafetyBackups: 'backup:openSafetyBackups',
-  confirmDialog: 'dialog:confirm'
+  openSafetyBackups: 'backup:openSafetyBackups'
 };
 
 function ok(data = null) {
@@ -714,6 +715,12 @@ function registerIpcHandlers() {
     clipboard.writeText(text);
     return ok();
   }, 'فشل في نسخ بيانات الشيت');
+  handleIpc(CHANNELS.exportTrackingWorkbook, async (rows) => {
+    const directory = path.join(app.getPath('documents'), DATA_DIRECTORY_NAME);
+    const savedPath = await saveTrackingWorkbook(directory, rows);
+    shell.showItemInFolder(savedPath);
+    return ok(savedPath);
+  }, 'تعذر تصدير ملف المتابعة');
   handleIpc(CHANNELS.getNextQuoteCode, async () => ok(getNextQuoteCode()), 'فشل في إنشاء كود عرض السعر');
 
   handleIpc(
@@ -917,22 +924,9 @@ function registerIpcHandlers() {
 
   handleIpc(CHANNELS.resetBusinessData, async (payload) => {
     const options = normalizeResetOptions(payload);
+    if (payload.confirmed !== true) throw new Error('أكّد البداية الجديدة من النافذة قبل المسح.');
     maintenanceBusy = true;
     try {
-      const details = [
-        'سيتم مسح كل المبيعات وعروض الأسعار والمشتريات والخامات وحركات المخزون وتصفير كاش البداية.',
-        options.clearPrinters ? 'سيتم حذف الطابعات أيضًا.' : 'سيتم الاحتفاظ بالطابعات.',
-        options.clearAssets ? 'سيتم حذف الأصول؛ هذا يغير قيم مدخلات الإهلاك.' : 'سيتم الاحتفاظ بالأصول.',
-        options.resetMachineHours ? 'سيتم تصفير ساعات الماكينة وآخر صيانة.' : 'سيتم الحفاظ على إجمالي ساعات الماكينة وآخر صيانة.',
-        options.restartCodes ? 'ستبدأ أرقام الأوردرات من ORD-1001. استخدم هذا للبيانات التجريبية فقط.' : 'لن تبدأ أرقام الأوردرات من جديد.',
-        'معادلة التسعير وإعدادات تكاليف التشغيل لا تتغير. ستُحفظ نسخة أمان مؤكدة قبل المسح.'
-      ].join('\n\n');
-      const optionsDialog = { type: 'warning', title: 'تأكيد البداية الجديدة',
-        buttons: ['إلغاء', 'حفظ نسخة أمان ثم المسح'], defaultId: 0, cancelId: 0, noLink: true,
-        message: 'هذه العملية تمسح البيانات الحالية. هل أنت متأكد؟', detail: details };
-      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-      const confirmation = owner ? await dialog.showMessageBox(owner, optionsDialog) : await dialog.showMessageBox(optionsDialog);
-      if (confirmation.response !== 1) return ok({ cancelled: true });
       const backupPath = createProtectedBackup('before-reset');
       const result = resetBusinessData(options);
       scheduleAutomaticBackup('after-reset');
@@ -948,25 +942,6 @@ function registerIpcHandlers() {
     return ok();
   }, 'تعذر فتح مجلد نسخ الأمان');
 
-  ipcMain.handle(CHANNELS.confirmDialog, async (_event, payload) => {
-    const confirmOptions = {
-      type: 'question',
-      buttons: ['نعم', 'إلغاء'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'تأكيد',
-      message: asTrimmedString(asObject(payload).message, 'هل أنت متأكد؟')
-    };
-    const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-    const result = owner
-      ? await dialog.showMessageBox(owner, confirmOptions)
-      : await dialog.showMessageBox(confirmOptions);
-
-    return {
-      success: true,
-      confirmed: result.response === 0
-    };
-  });
 }
 
 const userDataPath = path.join(app.getPath('appData'), DATA_DIRECTORY_NAME);

@@ -75,7 +75,8 @@ async function savePrinterAction() {
 }
 
 async function deletePrinterAction(id) {
-  const confirmed = await askConfirm('هل تريد حذف هذه الطابعة؟ لو مستخدمة في أوردرات سيتم أرشفتها فقط.');
+  const confirmed = await askConfirm('لو الطابعة مستخدمة في أوردرات، هتتأرشف وتفضل بياناتها موجودة في الأوردرات القديمة.',
+    { title: 'حذف الطابعة؟', action: 'حذف الطابعة', danger: true });
 
   if (!confirmed) return;
 

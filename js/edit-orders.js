@@ -507,33 +507,49 @@ const response = await window.farmAPI.updateOrder(payload);
     savingEdit = false;
   }
 }
-const deletingSaleCodes = new Set();
+let deletingSale = false;
+
 async function deleteSale(code) {
   const cleanCode = String(code || '').trim();
-  if (!cleanCode) {
-    showToast('كود الأوردر غير صالح', 'error');
+  const order = getOrderByCode(cleanCode);
+  if (!order) {
+    showToast('الأوردر غير موجود', 'error');
     return;
   }
-  if (deletingSaleCodes.has(cleanCode)) return;
-  deletingSaleCodes.add(cleanCode);
+  if (deletingSale) return;
+  deletingSale = true;
+  let committed = false;
   try {
-    const confirmed = await askConfirm(
-      `حذف الأوردر ${cleanCode} لتصحيح تسجيل خاطئ؟ سيتم حذف البيع وإرجاع خاماته للمخزون. لو الخامة اتستهلكت فعلًا، الحذف بهذه الطريقة لا يمثل المخزون الحقيقي.`
-    );
+    const materials = await window.farmAPI.getOrderMaterials(cleanCode);
+    if (!materials?.success || !Array.isArray(materials.data)) {
+      showToast(materials?.message || 'تعذر تحميل خامات الأوردر', 'error');
+      return;
+    }
+    const paid = isCancelled(order) ? 0 : Number(order.paidAmount ?? getOrderPaidAmount(order));
+    const restored = materials.data.filter((item) => item.materialId && Number(item.grams) > 0)
+      .map((item) => `${item.materialName} (${formatNumber(item.grams)} جم)`);
+    const confirmed = await askConfirm([
+      paid > 0 ? `هيتخصم ${formatMoney(paid)} من كاش الصندوق.` : 'المبلغ المحصّل للأوردر صفر.',
+      restored.length ? `هيرجع للمخزون ${restored.join('، ')}.` : 'مفيش خامات مرتبطة بالمخزون في الأوردر ده.',
+      'استخدم الحذف لتصحيح تسجيل غلط. لو الخامة اتستهلكت فعلاً، راجع رصيدها بعد الحذف.'
+    ], { title: `حذف الأوردر ${cleanCode}؟`, action: 'حذف الأوردر', danger: true });
     if (!confirmed) return;
     const response = await window.farmAPI.deleteOrder(cleanCode);
     if (!response?.success) {
       showToast(response?.message || 'فشل في حذف الأوردر', 'error');
       return;
     }
-    showToast('تم حذف الأوردر واسترجاع المخزون');
+    committed = true;
     await loadDashboardData();
     if (isModalOpen('reportsModal')) await renderReportsTable();
     if (isModalOpen('pipelineModal')) await renderPipeline();
+    showToast('تم حذف الأوردر وتحديث الصندوق والمخزون');
   } catch (error) {
-    showToast(error?.message || 'تعذر إتمام الحذف. راجع سجل المبيعات قبل إعادة المحاولة.', 'error');
+    showToast(committed
+      ? 'تم الحذف. لو العرض لسه قديم، اقفل الشاشة وافتحها من جديد.'
+      : (error?.message || 'تعذر إتمام الحذف.'), 'error');
   } finally {
-    deletingSaleCodes.delete(cleanCode);
+    deletingSale = false;
   }
 }
 window.saveEditSale = saveEditSale;

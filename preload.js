@@ -5,6 +5,7 @@ const CHANNELS = {
   getDataPage: 'db:getDataPage',
   getOrderMaterials: 'db:getOrderMaterials',
   copyTrackingRows: 'clipboard:copyTrackingRows',
+  exportTrackingWorkbook: 'tracking:exportWorkbook',
   getNextOrderCode: 'db:getNextOrderCode',
   getNextQuoteCode: 'db:getNextQuoteCode',
   saveConfig: 'db:saveConfig',
@@ -29,9 +30,7 @@ const CHANNELS = {
   exportBackup: 'db:exportBackup',
   importBackup: 'db:importBackup',
   resetBusinessData: 'db:resetBusinessData',
-  openSafetyBackups: 'backup:openSafetyBackups',
-
-  confirmDialog: 'dialog:confirm'
+  openSafetyBackups: 'backup:openSafetyBackups'
 };
 
 async function safeInvoke(channel, payload) {
@@ -62,6 +61,10 @@ contextBridge.exposeInMainWorld('farmAPI', {
 
   copyTrackingRows(text) {
     return safeInvoke(CHANNELS.copyTrackingRows, text);
+  },
+
+  exportTrackingWorkbook(rows) {
+    return safeInvoke(CHANNELS.exportTrackingWorkbook, rows);
   },
 
   getNextOrderCode() {
@@ -146,9 +149,5 @@ contextBridge.exposeInMainWorld('farmAPI', {
 
   openSafetyBackups() {
     return safeInvoke(CHANNELS.openSafetyBackups);
-  },
-
-  confirm(message) {
-    return safeInvoke(CHANNELS.confirmDialog, { message });
   }
 });

@@ -100,6 +100,8 @@ try:
   passed('Customer invoice excludes internal costs and profits')
   page.locator('#invoiceModal button[onclick="closeInvoice()"]').click()
   page.locator('#salesTableBody .action-btn.delete').first.click()
+  confirmation=page.locator('#actionConfirmDialog')
+  confirmation.get_by_role('button', name='حذف الأوردر', exact=True).click()
   page.wait_for_function('dashboardData.orders.length === 0')
   assert page.evaluate('(dashboardData.materials.find(m => String(m.id) === '+json.dumps(mid)+')).remaining')==1000
   passed('Report delete button returns stock once and removes the displayed sale')
@@ -107,6 +109,7 @@ try:
   tmpbackup=Path(tmp)/'test-backup.json';tmpbackup.write_text(json.dumps(backup,ensure_ascii=False))
   page.evaluate('closeAllModals(); openSettingsModal();')
   page.locator('#importBackupInput').set_input_files(str(tmpbackup))
+  confirmation.get_by_role('button', name='استيراد', exact=True).click()
   page.wait_for_function('dashboardData.orders.length === 1')
   passed('Actual backup file input restores data through preload/main validation')
   page.locator('button[onclick="openFreshStartModal()"]').click()
@@ -115,6 +118,7 @@ try:
   page.locator('#resetConfirmation').fill('بداية جديدة')
   page.screenshot(path=str(out/'fresh-start.png'),full_page=True)
   page.locator('#executeFreshStart').click()
+  confirmation.get_by_role('button', name='حفظ نسخة أمان ثم المسح', exact=True).click()
   page.wait_for_function("document.getElementById('resetResult').textContent.includes('تمت البداية الجديدة.') && !freshStartRunning")
   assert page.evaluate('dashboardData.materials.length')==0
   assert page.evaluate('dashboardData.orders.length')==0

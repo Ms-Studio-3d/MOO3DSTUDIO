@@ -11,6 +11,7 @@ const files = [
   'backup-worker.js',
   'backup-safety.js',
   'reset-options.js',
+  'tracking-workbook.js',
   'js/data-reset.js',
   'js/bootstrap.js',
   'js/business-dashboard.js',

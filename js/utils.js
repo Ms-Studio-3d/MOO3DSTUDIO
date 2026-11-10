@@ -346,18 +346,24 @@ function showToast(message, type = 'success') {
   }, visibleMs + 400);
 }
 
-async function askConfirm(message) {
-  try {
-    const response = await window.farmAPI.confirm(message);
-    if (!response?.success) {
-      showToast(response?.message || 'تعذر فتح نافذة التأكيد. العملية لم تُنفذ.', 'error');
-      return false;
-    }
-    return !!response.confirmed;
-  } catch (error) {
-    showToast(error?.message || 'تعذر فتح نافذة التأكيد. العملية لم تُنفذ.', 'error');
-    return false;
-  }
+function askConfirm(message, { title = 'تأكيد', action = 'متابعة', danger = false } = {}) {
+  const dialog = $('actionConfirmDialog');
+  if (dialog.open) return Promise.resolve(false);
+  const details = Array.isArray(message) ? message : [message];
+  setText('actionConfirmTitle', title);
+  const button = $('actionConfirmButton');
+  button.textContent = action;
+  button.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+  $('actionConfirmDetails').replaceChildren(...details.map((line) => {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    return paragraph;
+  }));
+  dialog.returnValue = 'cancel';
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true });
+  });
 }
 
 // ======================================
