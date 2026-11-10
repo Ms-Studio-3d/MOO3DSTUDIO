@@ -1612,7 +1612,7 @@ function updateOrder(payload) {
 
   const transaction = db.transaction((data) => {
     const existingOrder = db.prepare(`
-      SELECT id, code, printer_id AS printerId, final_price AS finalPrice,
+      SELECT id, code, printer_id AS printerId, final_price AS finalPrice, waste_weight AS wasteWeight, waste_cost AS wasteCost,
         payment_status AS paymentStatus, payment_method AS paymentMethod, paid_amount AS paidAmount
       FROM orders WHERE code = ?
     `).get(code);
@@ -1654,17 +1654,19 @@ function updateOrder(payload) {
     const replaceMaterialUsage = data.replaceMaterialUsage === undefined
       ? Array.isArray(data.materialUsage)
       : data.replaceMaterialUsage === true;
+    const wasteWeight = replaceMaterialUsage ? Number(data.wasteWeight ?? existingOrder.wasteWeight) : existingOrder.wasteWeight;
+    const wasteCost = replaceMaterialUsage ? Number(data.wasteCost ?? existingOrder.wasteCost) : existingOrder.wasteCost;
+    const wasteChanged = Math.abs(wasteWeight - existingOrder.wasteWeight) > STOCK_EPSILON;
+    const expectedRows = data.expectedMaterialRowIds;
+    const oldMaterials = replaceMaterialUsage || Array.isArray(expectedRows) ? getOrderMaterials(code) : [];
+    if (Array.isArray(expectedRows)
+      && (oldMaterials.length !== expectedRows.length || oldMaterials.some((item, index) => item.rowId !== expectedRows[index]))) {
+      throw new Error('خامات الأوردر اتعدّلت. افتح الأوردر من جديد قبل الحفظ.');
+    }
 
     if (replaceMaterialUsage) {
       if (data.materialUsage.length === 0) {
         throw new Error('لا يوجد استهلاك خامات في الأوردر');
-      }
-
-      const oldMaterials = getOrderMaterials(code);
-      if (Array.isArray(data.expectedMaterialRowIds)
-        && (oldMaterials.length !== data.expectedMaterialRowIds.length
-          || oldMaterials.some((item, index) => item.rowId !== data.expectedMaterialRowIds[index]))) {
-        throw new Error('خامات الأوردر اتعدّلت. افتح الأوردر من جديد قبل الحفظ.');
       }
 
       const before = new Map();
@@ -1675,10 +1677,13 @@ function updateOrder(payload) {
         else unlinkedRows.set(item.rowId, item);
       }
       const linked = data.materialUsage.filter((item) => !item.preserveRowId);
-      const hasTrackedWaste = oldMaterials.some((item) => item.wasteGrams != null);
+      const trackWaste = wasteChanged || oldMaterials.some((item) => item.wasteGrams != null);
       const preservedWaste = data.materialUsage.reduce((sum, item) =>
         sum + (unlinkedRows.get(item.preserveRowId)?.wasteGrams || 0), 0);
-      const waste = hasTrackedWaste ? Math.max(0, Number(data.wasteWeight || 0) - preservedWaste) : 0;
+      const waste = trackWaste ? Math.max(0, wasteWeight - preservedWaste) : 0;
+      if (wasteChanged && waste > STOCK_EPSILON && linked.length === 0) {
+        throw new Error('اربط خامة من المخزون لتسجيل وزن الهالك الجديد.');
+      }
       const usage = allocateWaste(linked, waste);
       for (const item of usage) {
         if (!Number.isFinite(Number(item.grams)) || Number(item.grams) <= 0) throw new Error('كمية الخامة لازم تكون أكبر من صفر');
@@ -1703,7 +1708,7 @@ function updateOrder(payload) {
         if (!row) throw new Error('خامة قديمة غير موجودة في هذا الأوردر');
         if (requested.preserveRowId) unlinkedRows.delete(requested.preserveRowId);
         insertUsage.run(existingOrder.id, row.materialId ? Number(row.materialId) : null, String(row.materialName || '').trim(),
-          Number(row.grams), hasTrackedWaste ? row.wasteGrams : null, Number(row.pricePerGram || 0), Number(row.totalCost || 0), row.createdAt ?? null);
+          Number(row.grams), trackWaste ? row.wasteGrams : null, Number(row.pricePerGram || 0), Number(row.totalCost || 0), row.createdAt ?? null);
       }
     }
 
@@ -1778,8 +1783,8 @@ function updateOrder(payload) {
       String(data.notes || '').trim(),
       String(data.date || '').trim(),
       Number(data.materialCost || 0),
-      Number(data.wasteWeight || 0),
-      Number(data.wasteCost || 0),
+      wasteWeight,
+      wasteCost,
       Number(data.depreciationCost || 0),
       Number(data.electricityCost || 0),
       Number(data.laborCost || 0),

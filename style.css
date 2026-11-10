@@ -3134,3 +3134,30 @@ button[onclick="saveQuote()"] {
   .quote-workspace > *, .quote-inputs-column > * { min-width: 0; }
   .bottom-nav { overflow-y: auto; }
 }
+
+@media (min-width: 1181px) {
+  .result-card .summary-main.summary-redesign {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+}
+
+@media (min-width: 1181px) and (max-height: 820px) {
+  .main-layout.quote-workspace,
+  .quote-summary-column,
+  .quote-inputs-column {
+    height: 100% !important;
+  }
+
+  .quote-inputs-column {
+    grid-template-rows: max-content max-content !important;
+    align-content: start !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .quote-inputs-column .pricing-details-card,
+  .quote-inputs-column .material-usage-card {
+    height: auto !important;
+  }
+}

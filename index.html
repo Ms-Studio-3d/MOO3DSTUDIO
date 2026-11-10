@@ -656,6 +656,11 @@
           <label for="editFinalPrice">سعر البيع النهائي</label>
           <input type="text" id="editFinalPrice" inputmode="decimal" />
         </div>
+
+        <div class="form-group">
+          <label for="editWasteWeight">الهالك الإضافي / جرام</label>
+          <input type="text" id="editWasteWeight" inputmode="decimal" aria-describedby="editLegacyWasteHint" />
+        </div>
       </div>
 
       <div class="grid-4 section-gap-sm">
@@ -690,6 +695,7 @@
       </section>
       <div class="helper-box section-gap-sm">
         <span id="editCostPreview" aria-live="polite"></span>
+        <span id="editLegacyWasteHint" hidden>هالك الأوردر القديم محسوب في التكلفة. لو عدّلت وزنه، الوزن الجديد هيتخصم من المخزون عند الحفظ.</span>
         <span>عند الحفظ يتحدّث المخزون والتكلفة. سعر البيع هو الرقم المسجّل في خانة سعر البيع النهائي.</span>
       </div>
 
