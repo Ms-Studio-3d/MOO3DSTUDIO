@@ -9,6 +9,21 @@ permissions:
   contents: read
 
 jobs:
+  verify-pnpm-lock:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      pnpm_config_pm_on_fail: ignore
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned pnpm in the independent checkout
+        run: npm install --global pnpm@11.25.0
+      - name: Verify pnpm install from the committed lockfile
+        run: pnpm install --frozen-lockfile
+
   build-windows:
     runs-on: windows-latest
     timeout-minutes: 45
@@ -16,6 +31,9 @@ jobs:
       ELECTRON_CACHE: ${{ github.workspace }}\.cache\electron
       electron_config_cache: ${{ github.workspace }}\.cache\electron
       ELECTRON_BUILDER_CACHE: ${{ github.workspace }}\.cache\electron-builder
+    defaults:
+      run:
+        working-directory: release-source/MOO3D-Farm
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -24,6 +42,21 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Archive and extract the exact source used to build the installer
+        working-directory: .
+        shell: pwsh
+        run: |
+          git archive --format=zip --prefix=MOO3D-Farm/ --output=MOO3D-Farm-source.zip HEAD
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive MOO3D-Farm-source.zip -DestinationPath release-source
+          $source = 'release-source/MOO3D-Farm'
+          if ((Test-Path "$source/docs/test-results") -or (Get-ChildItem $source -File -Filter '*.log')) {
+            throw 'Remove old test reports and build logs from the source archive.'
+          }
+          $duplicateTests = @(Get-ChildItem $source -File -Filter '*.test.js' | Where-Object {
+            Test-Path (Join-Path "$source/tests" $_.Name)
+          })
+          if ($duplicateTests.Count) { throw "Remove the reviewed root test copies: $($duplicateTests.Name -join ', ')" }
       - name: Install locked dependencies for Node
         run: npm ci --no-audit --no-fund
       - name: Download the pinned Electron runtime
@@ -44,11 +77,81 @@ jobs:
           & .\node_modules\electron\dist\electron.exe tests/electron-window-smoke.cjs | Out-Host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Windows installer
-        run: npm run dist:installer
-      - name: Upload installer
+        run: npm run dist:installer -- --config.electronDist=node_modules/electron/dist
+      - name: Record installer and source archive checksums
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem dist -File -Filter '*Setup*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer.' }
+          $files = @($installers[0].FullName, (Join-Path $env:GITHUB_WORKSPACE 'MOO3D-Farm-source.zip'))
+          $files | Get-FileHash -Algorithm SHA256 | ForEach-Object {
+            "$($_.Hash)  $(Split-Path $_.Path -Leaf)"
+          } | Set-Content (Join-Path $env:GITHUB_WORKSPACE 'SHA256SUMS.txt') -Encoding ascii
+      - name: Transfer unverified installer to the clean Windows test job
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-installer-unverified
+          path: |
+            release-source/MOO3D-Farm/dist/*Setup*.exe
+            MOO3D-Farm-source.zip
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 2
+
+  verify-installed-windows:
+    needs: [verify-pnpm-lock, build-windows]
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate-installer-unverified
+          path: candidate
+      - name: Verify hashes and install the exact candidate on this fresh runner
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem candidate -Recurse -File -Filter '*Setup*.exe')
+          if ($installers.Count -ne 1) { throw 'Expected exactly one Windows installer.' }
+          $installer = $installers[0]
+          $source = Get-Item candidate/MOO3D-Farm-source.zip
+          $expected = Get-Content candidate/SHA256SUMS.txt
+          foreach ($file in @($installer, $source)) {
+            $actual = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+            if ("$actual  $($file.Name)" -notin $expected) { throw "Checksum mismatch for $($file.Name)" }
+            Write-Host "$actual  $($file.Name)"
+          }
+          $installDir = Join-Path $env:RUNNER_TEMP 'MOO3D Farm Installed'
+          $userData = Join-Path ([Environment]::GetFolderPath('ApplicationData', 'DoNotVerify')) 'MOO3DSTUDIO'
+          $documents = Join-Path ([Environment]::GetFolderPath('MyDocuments', 'DoNotVerify')) 'MOO3DSTUDIO'
+          if ((Test-Path $installDir) -or (Test-Path $userData) -or (Test-Path $documents)) {
+            throw 'The installer test requires a clean Windows profile.'
+          }
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList "/S /D=$installDir" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited with $($process.ExitCode)" }
+          $exe = Join-Path $installDir 'MOO3D Farm.exe'
+          if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Installed executable was not found.' }
+          if ((Test-Path $userData) -or (Test-Path $documents)) { throw 'The app launched before the first-run smoke test.' }
+          Expand-Archive -LiteralPath $source.FullName -DestinationPath source
+          "MOO3D_INSTALLED_EXE=$exe" >> $env:GITHUB_ENV
+      - name: Install the pinned test driver outside the app and source tree
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'moo3d-test-tools'
+          npm install --prefix $tools --no-save --no-package-lock --no-audit --no-fund playwright-core@1.62.1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "MOO3D_PLAYWRIGHT=$(Join-Path $tools 'node_modules/playwright-core')" >> $env:GITHUB_ENV
+      - name: Test the installed app, native SQLite, DevTools, and minimum window
+        run: node source/MOO3D-Farm/tests/installed-app-smoke.cjs "$env:MOO3D_INSTALLED_EXE"
+      - name: Publish only the installer that passed the clean Windows test
         uses: actions/upload-artifact@v4
         with:
           name: MOO3DSTUDIO-Windows-Installer
-          path: dist/*Setup*.exe
+          path: |
+            candidate/**/*Setup*.exe
+            candidate/MOO3D-Farm-source.zip
+            candidate/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
