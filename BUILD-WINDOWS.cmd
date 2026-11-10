@@ -22,7 +22,9 @@ set ELECTRON_RUN_AS_NODE=1
 start /b /wait "" "node_modules\electron\dist\electron.exe" tests\electron-runtime-smoke.cjs >> build-windows.log 2>&1
 if errorlevel 1 goto failed
 set ELECTRON_RUN_AS_NODE=
-call npm run dist:installer >> build-windows.log 2>&1
+start /b /wait "" "node_modules\electron\dist\electron.exe" tests\electron-window-smoke.cjs >> build-windows.log 2>&1
+if errorlevel 1 goto failed
+call npm run dist:installer -- --config.electronDist=node_modules/electron/dist >> build-windows.log 2>&1
 if errorlevel 1 goto failed
 echo.
 echo SUCCESS. The installer is in the dist folder. Back up your old data before installing.
