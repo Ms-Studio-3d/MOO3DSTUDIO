@@ -5,7 +5,8 @@ const orderControls = [
   '#wasteWeight', '#resFinal', '#resProfit', '[data-action-click="saveSale"]',
   '[data-view="settings"]'
 ];
-const settingsControls = ['#settingsMaintenanceCost', '#settingsModal [data-action-click="saveSettings"]'];
+const settingsControls = ['#settingsMaintenanceCost', '#retryBackupButton', '#backupLastSuccess',
+  '#settingsModal [data-action-click="saveSettings"]'];
 const editControls = ['#editWasteWeight', '#editMaterialPicker', '#editFinalPrice', '[data-action-click="saveEditSale"]'];
 
 // Runs in the renderer. Hit-testing also catches clipping by a parent or an overlapping panel.

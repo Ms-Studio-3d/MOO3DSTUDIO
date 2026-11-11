@@ -28,6 +28,13 @@ async function run() {
       .getByRole('button', { name: 'ابدأ لاحقًا', exact: true }).click();
     console.log('PASS installed executable started in a clean profile');
 
+    await page.locator('#backupStatusChip').click();
+    await page.locator('#retryBackupButton').click();
+    await page.locator('#backupStatusBadge[data-state="success"]').waitFor();
+    assert.ok((await page.evaluate(() => window.farmAPI.getBackupStatus())).data.lastSuccessAt);
+    await page.locator('#settingsModal [data-action-click="closeSettingsModal"]').click();
+    console.log('PASS installed backup status and manual verified backup');
+
     const security = await window.evaluate(async (win) => {
       const contents = win.webContents;
       const { sandbox, contextIsolation, nodeIntegration } = contents.getLastWebPreferences();

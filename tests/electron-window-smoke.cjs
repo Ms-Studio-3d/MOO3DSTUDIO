@@ -64,9 +64,15 @@ app.once('browser-window-created', (_event, window) => {
       ].join('\n'));
       await waitFor('window.inlineBlocked');
       assert.equal(await execute('Boolean(window.inlineExecuted)'), false);
-      phase = 'settings and dashboard navigation';
       await execute("document.querySelector('[data-action-click=dismissFirstRunGuide]').click()");
       await waitFor("!document.querySelector('#firstRunGuide')?.open");
+      phase = 'backup status and retry';
+      await execute("document.querySelector('[data-view=settings]').click()");
+      await execute("document.querySelector('[data-action-click=retryAutomaticBackup]').click()");
+      await waitFor("document.querySelector('#backupStatusBadge').dataset.state === 'success'");
+      assert.ok((await execute('farmAPI.getBackupStatus()')).data.lastSuccessAt);
+      await execute("document.querySelector('#settingsModal [data-action-click=closeSettingsModal]').click()");
+      phase = 'settings and dashboard navigation';
       await execute("setValue('profitMargin', '77'); calc(); document.querySelector('[data-view=settings]').click()");
       await waitFor("isModalOpen('settingsModal')");
       await execute("document.querySelector('#settingsModal [data-action-click=closeSettingsModal]').click()");
