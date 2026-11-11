@@ -187,6 +187,55 @@ async function workerBackup(reason) {
     assert.ok(fs.existsSync(result.data.backupPath));
     assert.equal(full().materials.find((m) => m.name === material.name).remaining, 2000);
   });
+  await test('a manually saved zero-price order survives backup and restore', async () => {
+    fresh('zero-price-order');
+    const sale = sampleOrder(h.database);
+    const material = sale.materialUsage[0];
+    const created = await h.farmAPI.createOrder(sale);
+    assert.equal(created.success, true, created.message);
+    const edit = { ...sale, finalPrice: 0, unitFinalPrice: 0, priceBeforeDiscount: 0, priceAfterDiscount: 0,
+      profit: -sale.totalCost, unitProfit: -sale.totalCost, replaceMaterialUsage: false, manualFinalPrice: true };
+    const saved = await h.farmAPI.updateOrder(edit);
+    assert.equal(saved.success, true, saved.message);
+    assert.equal(getOrder(sale.code).finalPrice, 0);
+    assert.equal(getOrder(sale.code).paidAmount, 0);
+    assert.equal(stock(material.materialId), 900);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, 0);
+
+    const exported = await h.farmAPI.exportBackup();
+    assert.equal(exported.success, true, exported.message);
+    const backup = clone(exported.data);
+    assert.equal(backup.orders[0].finalPrice, 0);
+    assert.equal(backup.orders[0].paidAmount, 0);
+    const next = await h.farmAPI.createOrder(sampleOrder(h.database));
+    assert.equal(next.success, true, next.message);
+    assert.equal(stock(material.materialId), 800);
+
+    const imported = await h.farmAPI.importBackup(backup);
+    assert.equal(imported.success, true, imported.message);
+    const protectedBackup = JSON.parse(fs.readFileSync(imported.data.backupPath, 'utf8'));
+    assert.equal(protectedBackup.orders.length, 2);
+    assert.equal(protectedBackup.orders.find((order) => order.code === sale.code).finalPrice, 0);
+    const restored = full();
+    assert.equal(restored.orders.length, 1);
+    assert.equal(getOrder(sale.code).finalPrice, 0);
+    assert.equal(getOrder(sale.code).paidAmount, 0);
+    assert.equal(restored.materials.find((row) => row.name === material.materialName).remaining, 900);
+    assert.equal(h.database.getDashboardData().meta.summary.collected, 0);
+
+    for (const finalPrice of [-1, undefined, '', '   ', 'invalid']) {
+      const rejected = await h.farmAPI.updateOrder({ ...edit, finalPrice });
+      assert.equal(rejected.success, false, String(finalPrice));
+      assert.match(rejected.message, /أدخل سعر بيع صالحًا/);
+      assert.equal((await h.farmAPI.importBackup({ ...backup, orders: [{ ...backup.orders[0], finalPrice }] })).success,
+        false, String(finalPrice));
+    }
+    const rejectedCreation = await h.farmAPI.createOrder(sampleOrder(h.database, { finalPrice: -1 }));
+    assert.equal(rejectedCreation.success, false);
+    assert.match(rejectedCreation.message, /أدخل سعر بيع صالحًا/);
+    assert.deepEqual(full().orders, restored.orders);
+    assert.deepEqual(full().materials, restored.materials);
+  });
   await test('truncated backup cannot wipe valid data', async () => {
     const before = full();
     const bad = clone(before); delete bad.materials;
