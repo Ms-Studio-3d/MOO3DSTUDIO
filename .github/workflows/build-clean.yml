@@ -67,8 +67,11 @@ jobs:
         shell: pwsh
         run: |
           $env:ELECTRON_RUN_AS_NODE = '1'
-          $process = Start-Process -FilePath .\node_modules\electron\dist\electron.exe -ArgumentList 'tests\electron-runtime-smoke.cjs' -NoNewWindow -Wait -PassThru
-          $result = $process.ExitCode
+          $result = 0
+          foreach ($test in @('tests\electron-runtime-smoke.cjs', 'tests\shutdown-backup.test.js')) {
+            $process = Start-Process -FilePath .\node_modules\electron\dist\electron.exe -ArgumentList $test -NoNewWindow -Wait -PassThru
+            if ($process.ExitCode -ne 0) { $result = $process.ExitCode; break }
+          }
           Remove-Item Env:ELECTRON_RUN_AS_NODE
           if ($result -ne 0) { exit $result }
       - name: Verify real Electron window and responsive controls
