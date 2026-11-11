@@ -21,6 +21,8 @@ if errorlevel 1 goto failed
 set ELECTRON_RUN_AS_NODE=1
 start /b /wait "" "node_modules\electron\dist\electron.exe" tests\electron-runtime-smoke.cjs >> build-windows.log 2>&1
 if errorlevel 1 goto failed
+start /b /wait "" "node_modules\electron\dist\electron.exe" tests\shutdown-backup.test.js >> build-windows.log 2>&1
+if errorlevel 1 goto failed
 set ELECTRON_RUN_AS_NODE=
 start /b /wait "" "node_modules\electron\dist\electron.exe" tests\electron-window-smoke.cjs >> build-windows.log 2>&1
 if errorlevel 1 goto failed

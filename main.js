@@ -53,7 +53,10 @@ let dailyBackupTimer = null;
 let autoBackupRunning = false;
 let activeBackupPromise = null;
 let backupStatusStore = null;
+const pendingIpcOperations = new Set();
+let shutdownInProgress = false;
 let shutdownBackupDone = false;
+let shutdownBackupTimedOut = false;
 let maintenanceBusy = false;
 let trackingExportInProgress = false;
 const trackingDirectory = () => path.join(app.getPath('documents'), DATA_DIRECTORY_NAME);
@@ -254,9 +257,18 @@ function handleIpc(channel, handler, fallbackMessage) {
       return fail('مصدر الطلب غير مسموح.');
     }
     try {
+      if (shutdownInProgress && channel !== CHANNELS.getBackupStatus) {
+        throw new Error('جاري إغلاق البرنامج وحفظ نسخة احتياطية. أعد فتحه لإجراء تعديلات جديدة.');
+      }
       if (maintenanceBusy) throw new Error('جاري تأمين البيانات. أعد المحاولة بعد انتهاء الاستيراد أو البداية الجديدة.');
       ensureDbReady();
-      return await handler(payload);
+      const operation = Promise.resolve(handler(payload));
+      pendingIpcOperations.add(operation);
+      try {
+        return await operation;
+      } finally {
+        pendingIpcOperations.delete(operation);
+      }
     } catch (error) {
       console.error(`[IPC ERROR] ${channel}`, error);
       return fail(error?.message || fallbackMessage || 'حدث خطأ غير متوقع');
@@ -514,8 +526,12 @@ function createAutomaticBackup(reason = 'auto', timeoutMs = 30_000) {
       if (settled) return;
       settled = true;
       clearTimeout(deadline);
-      if (filePath) status.success(filePath);
-      else status.failure(error);
+      // A worker may finish after the overall shutdown deadline. Its older
+      // result must not replace the persisted incomplete-shutdown warning.
+      if (!shutdownBackupTimedOut) {
+        if (filePath) status.success(filePath);
+        else status.failure(error);
+      }
       resolve(filePath || null);
     };
     try {
@@ -581,6 +597,7 @@ function createProtectedBackup(reason) {
 }
 
 function scheduleAutomaticBackup(reason = 'auto', delayMs = 2000) {
+  if (shutdownInProgress) return;
   if (autoBackupTimer) {
     clearTimeout(autoBackupTimer);
   }
@@ -1128,7 +1145,8 @@ app.on('before-quit', (event) => {
   if (shutdownBackupDone) return;
 
   event.preventDefault();
-  shutdownBackupDone = true;
+  if (shutdownInProgress) return;
+  shutdownInProgress = true;
 
   if (autoBackupTimer) {
     clearTimeout(autoBackupTimer);
@@ -1137,16 +1155,30 @@ app.on('before-quit', (event) => {
 
   if (dailyBackupTimer) clearInterval(dailyBackupTimer);
 
-  const shutdownDeadline = setTimeout(() => {
-    getBackupStatusStore().failure('أُغلق البرنامج قبل اكتمال النسخ. احفظ نسخة جديدة عند الفتح.');
+  const finishShutdown = () => {
+    if (shutdownBackupDone) return;
+    shutdownBackupDone = true;
+    clearTimeout(shutdownDeadline);
     app.quit();
-  }, 5000);
-  createAutomaticBackup('shutdown', 5000)
+  };
+  // Allow the existing worker's 30-second deadline, then five seconds for a
+  // fresh final snapshot. The overall deadline also bounds pending IPC work.
+  const shutdownDeadline = setTimeout(() => {
+    shutdownBackupTimedOut = true;
+    getBackupStatusStore().failure('أُغلق البرنامج قبل اكتمال النسخ. احفظ نسخة جديدة عند الفتح.');
+    finishShutdown();
+  }, 35_000);
+  const saveFinalBackup = async () => {
+    await Promise.allSettled([...pendingIpcOperations]);
+    if (activeBackupPromise) await activeBackupPromise;
+    if (shutdownBackupTimedOut) return;
+    // Never reuse an earlier snapshot: accepted writes may have completed
+    // while that backup was running, including asynchronous reset/import work.
+    await createAutomaticBackup('shutdown', 5000);
+  };
+  saveFinalBackup()
     .catch((error) => console.warn('[SHUTDOWN BACKUP FAILED]', error?.message || error))
-    .finally(() => {
-      clearTimeout(shutdownDeadline);
-      app.quit();
-    });
+    .finally(finishShutdown);
 });
 
 app.on('window-all-closed', () => {
