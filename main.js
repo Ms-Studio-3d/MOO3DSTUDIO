@@ -38,6 +38,7 @@ const {
 } = require('./database');
 const { normalizeResetOptions } = require('./reset-options');
 const { writeVerifiedBackup } = require('./backup-safety');
+const { createBackupStatusStore } = require('./backup-status');
 const { ensureTrackingWorkbook, prepareTrackingReset, saveTrackingWorkbook } = require('./tracking-workbook');
 const { productName: PRODUCT_NAME } = require('./package.json');
 const DATA_DIRECTORY_NAME = 'MOO3DSTUDIO';
@@ -50,6 +51,8 @@ let ipcHandlersRegistered = false;
 let autoBackupTimer = null;
 let dailyBackupTimer = null;
 let autoBackupRunning = false;
+let activeBackupPromise = null;
+let backupStatusStore = null;
 let shutdownBackupDone = false;
 let maintenanceBusy = false;
 let trackingExportInProgress = false;
@@ -105,7 +108,10 @@ const CHANNELS = {
   exportBackup: 'db:exportBackup',
   importBackup: 'db:importBackup',
   resetBusinessData: 'db:resetBusinessData',
-  openSafetyBackups: 'backup:openSafetyBackups'
+  openSafetyBackups: 'backup:openSafetyBackups',
+  getBackupStatus: 'backup:getStatus',
+  retryBackup: 'backup:retry',
+  openAutomaticBackups: 'backup:openAutomaticBackups'
 };
 
 function ok(data = null) {
@@ -498,7 +504,20 @@ function ensureBackupsDir() {
 }
 
 function createAutomaticBackup(reason = 'auto', timeoutMs = 30_000) {
-  return new Promise((resolve) => {
+  if (activeBackupPromise) return activeBackupPromise;
+  const status = getBackupStatusStore();
+  status.start();
+  const attempt = new Promise((resolve) => {
+    let deadline;
+    let settled = false;
+    const finish = (filePath = null, error = 'تعذر حفظ النسخة الاحتياطية.') => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      if (filePath) status.success(filePath);
+      else status.failure(error);
+      resolve(filePath || null);
+    };
     try {
       ensureDbReady();
       ensureBackupsDir();
@@ -511,18 +530,10 @@ function createAutomaticBackup(reason = 'auto', timeoutMs = 30_000) {
         }
       });
 
-      let settled = false;
-      const finish = (filePath = null) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        resolve(filePath || null);
-      };
-
-      const deadline = setTimeout(() => {
+      deadline = setTimeout(() => {
         console.warn('[AUTO BACKUP TIMEOUT]', reason);
         worker.terminate().catch(() => {});
-        finish(null);
+        finish(null, 'انتهت مهلة حفظ النسخة الاحتياطية. أعد المحاولة.');
       }, timeoutMs);
 
       worker.on('message', (message) => {
@@ -532,27 +543,34 @@ function createAutomaticBackup(reason = 'auto', timeoutMs = 30_000) {
         }
 
         console.warn('[AUTO BACKUP FAILED]', message?.message || 'Unknown backup worker error');
-        finish(null);
+        finish(null, message?.message);
       });
 
       worker.on('error', (error) => {
         console.warn('[AUTO BACKUP FAILED]', error?.message || error);
-        finish(null);
+        finish(null, error?.message);
       });
 
       worker.on('exit', (code) => {
         if (!settled) {
           console.warn('[AUTO BACKUP FAILED]', `worker exited with code ${code}`);
-          finish(null);
+          finish(null, 'توقفت عملية النسخ قبل اكتمال حفظ الملف.');
         }
       });
 
       if (typeof worker.unref === 'function') worker.unref();
     } catch (error) {
       console.warn('[AUTO BACKUP FAILED]', error?.message || error);
-      resolve(null);
+      finish(null, error?.message);
     }
   });
+  activeBackupPromise = attempt.finally(() => { activeBackupPromise = null; });
+  return activeBackupPromise;
+}
+
+function getBackupStatusStore() {
+  if (!backupStatusStore) backupStatusStore = createBackupStatusStore(app.getPath('userData'));
+  return backupStatusStore;
 }
 
 function createProtectedBackup(reason) {
@@ -749,6 +767,18 @@ function validateBackupPayload(payload) {
 function registerIpcHandlers() {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
+
+  handleIpc(CHANNELS.getBackupStatus, async () => ok(getBackupStatusStore().get()), 'تعذر قراءة حالة النسخ الاحتياطي');
+  handleIpc(CHANNELS.retryBackup, async () => {
+    const filePath = await createAutomaticBackup('manual');
+    if (!filePath) throw new Error('تعذر حفظ النسخة الاحتياطية. راجع مساحة القرص وإمكانية الكتابة في مجلد النسخ.');
+    return ok(getBackupStatusStore().get());
+  }, 'تعذر حفظ النسخة الاحتياطية');
+  handleIpc(CHANNELS.openAutomaticBackups, async () => {
+    const error = await shell.openPath(ensureBackupsDir());
+    if (error) throw new Error(error);
+    return ok();
+  }, 'تعذر فتح مجلد النسخ التلقائية');
 
   handleIpc(CHANNELS.getDashboardData, async () => ok(getDashboardData()), 'فشل في تحميل البيانات');
   handleIpc(
@@ -1107,9 +1137,16 @@ app.on('before-quit', (event) => {
 
   if (dailyBackupTimer) clearInterval(dailyBackupTimer);
 
+  const shutdownDeadline = setTimeout(() => {
+    getBackupStatusStore().failure('أُغلق البرنامج قبل اكتمال النسخ. احفظ نسخة جديدة عند الفتح.');
+    app.quit();
+  }, 5000);
   createAutomaticBackup('shutdown', 5000)
     .catch((error) => console.warn('[SHUTDOWN BACKUP FAILED]', error?.message || error))
-    .finally(() => app.quit());
+    .finally(() => {
+      clearTimeout(shutdownDeadline);
+      app.quit();
+    });
 });
 
 app.on('window-all-closed', () => {

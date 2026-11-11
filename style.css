@@ -3080,6 +3080,34 @@ button[onclick="saveQuote()"] {
   padding-block: 7px;
 }
 
+.backup-status-chip {
+  max-width: 230px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+.backup-status-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.backup-status-chip[data-state="success"], #backupStatusBadge[data-state="success"] { color: #86efac; }
+.backup-status-chip[data-state="error"], #backupStatusBadge[data-state="error"] { color: #fca5a5; }
+.backup-status-chip[data-state="running"], #backupStatusBadge[data-state="running"] { color: #fcd34d; }
+.backup-status-panel {
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-3);
+  line-height: 1.7;
+}
+.backup-status-panel p { margin: 8px 0; overflow-wrap: anywhere; }
+.backup-status-header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; justify-content: space-between; }
+.backup-status-header h3 { margin: 0; font-size: 16px; }
+#backupStatusBadge { font-size: 13px; }
+#backupErrorDetails { user-select: text; white-space: pre-wrap; }
+
 .settings-help {
   margin-top: 14px;
   padding: 9px 12px;

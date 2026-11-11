@@ -1,6 +1,6 @@
 {
   "name": "moo3dstudio",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "productName": "MOO3D Farm",
   "description": "MOO3D Farm desktop app for 3D printing pricing, orders, and inventory",
   "main": "main.js",
@@ -23,7 +23,7 @@
     "dist:win": "electron-builder --win nsis --publish never",
     "dist:installer": "electron-builder --win nsis --publish never",
     "dist:portable": "electron-builder --win portable --publish never",
-    "test": "node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js && node tests/review-regressions.test.js",
+    "test": "node tests/pricing.test.js && node tests/syntax.test.js && node tests/database.test.js && node tests/inventory.test.js && node tests/performance.test.js && node tests/ui.test.js && node tests/integration.test.js && node tests/concurrent-load.test.js && node tests/stability.test.js && node tests/pricing-preservation.test.js && node tests/review-regressions.test.js && node tests/backup-status.test.js",
     "test:stability": "node tests/stability.test.js",
     "setup:electron": "node node_modules/electron/install.js"
   },
@@ -50,6 +50,7 @@
       "database.js",
       "backup-worker.js",
       "backup-safety.js",
+      "backup-status.js",
       "reset-options.js",
       "tracking-workbook.js",
       "assets/tracking-template.xlsx",

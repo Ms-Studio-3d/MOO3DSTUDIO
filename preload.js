@@ -30,7 +30,10 @@ const CHANNELS = {
   exportBackup: 'db:exportBackup',
   importBackup: 'db:importBackup',
   resetBusinessData: 'db:resetBusinessData',
-  openSafetyBackups: 'backup:openSafetyBackups'
+  openSafetyBackups: 'backup:openSafetyBackups',
+  getBackupStatus: 'backup:getStatus',
+  retryBackup: 'backup:retry',
+  openAutomaticBackups: 'backup:openAutomaticBackups'
 };
 
 async function safeInvoke(channel, payload) {
@@ -47,6 +50,18 @@ async function safeInvoke(channel, payload) {
 }
 
 contextBridge.exposeInMainWorld('farmAPI', {
+  getBackupStatus() {
+    return safeInvoke(CHANNELS.getBackupStatus);
+  },
+
+  retryBackup() {
+    return safeInvoke(CHANNELS.retryBackup);
+  },
+
+  openAutomaticBackups() {
+    return safeInvoke(CHANNELS.openAutomaticBackups);
+  },
+
   getDashboardData() {
     return safeInvoke(CHANNELS.getDashboardData);
   },

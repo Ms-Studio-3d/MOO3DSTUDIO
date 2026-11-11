@@ -31,6 +31,7 @@
           <button class="btn btn-secondary btn-small" type="button" data-action-click="openMaterialsManagerModal">الخامات</button>
           <button class="btn btn-secondary btn-small" type="button" data-action-click="openPrintersManagerModal">الطابعات</button>
 
+          <button type="button" id="backupStatusChip" class="backup-status-chip" data-state="pending" data-action-click="openSettingsModal">جارٍ التحقق من النسخ</button>
           <div class="order-code-chip">
             <span>ORD-<span id="nextOrderCode">...</span></span>
           </div>
@@ -912,7 +913,7 @@
     <div class="modal-content panel-content settings-panel">
       <div class="panel-head">
         <button type="button" data-action-click="closeSettingsModal" class="btn btn-secondary btn-auto">رجوع</button>
-        <h2>الإعدادات — <bdi>0.0.2</bdi></h2>
+        <h2>الإعدادات — <bdi>0.0.3</bdi></h2>
       </div>
 
       <div class="settings-fields">
@@ -1029,6 +1030,23 @@
         <p><strong>تكلفة الطابعة.</strong> تكلفة ساعة الطابعة تعني التشغيل فقط. التسعير يضيف إهلاك الأصول ونصيب الصيانة مرة واحدة، ويتحدث عند تغيير تكلفة الأصل أو ساعات الإهلاك أو تكلفة الصيانة.</p>
       </details>
 
+      <section class="backup-status-panel section-gap-md" aria-labelledby="backupStatusHeading">
+        <div class="backup-status-header">
+          <h3 id="backupStatusHeading">النسخ الاحتياطي التلقائي</h3>
+          <span id="backupStatusBadge" data-state="pending" aria-live="polite">جارٍ التحقق من النسخ</span>
+        </div>
+        <p>آخر نسخة تلقائية ناجحة: <time id="backupLastSuccess">جارٍ التحقق…</time></p>
+        <p id="backupStatusMessage"></p>
+        <details id="backupErrorBox" hidden>
+          <summary>تفاصيل الخطأ</summary>
+          <p id="backupErrorDetails"></p>
+        </details>
+        <div class="inline-actions">
+          <button type="button" id="retryBackupButton" class="btn btn-secondary" data-action-click="retryAutomaticBackup">حفظ نسخة الآن</button>
+          <button type="button" class="btn btn-secondary" data-action-click="openAutomaticBackupsFolder">مجلد النسخ التلقائية</button>
+        </div>
+      </section>
+
       <div class="inline-actions section-gap-md">
         <button type="button" class="btn btn-primary" data-action-click="saveSettings">حفظ الإعدادات</button>
         <button type="button" class="btn btn-secondary" data-action-click="exportBackup">تصدير Backup</button>
@@ -1136,6 +1154,7 @@
 <script src="js/business-dashboard.js"></script>
 <script src="js/purchases-assets.js"></script>
 <script src="js/data-reset.js"></script>
+<script src="js/backup-status.js"></script>
 <script src="js/bootstrap.js"></script>
 <script src="js/actions.js"></script>
 </body>
