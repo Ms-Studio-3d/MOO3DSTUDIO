@@ -117,6 +117,7 @@ window.deleteSale = deleteSale;
 
 document.addEventListener('DOMContentLoaded', async () => {
   initializeDates();
+  initializeBackupStatus();
 
   bindLiveCalculationInputs();
   bindPaymentInputs();
