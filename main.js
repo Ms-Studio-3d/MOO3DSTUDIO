@@ -138,6 +138,11 @@ function asPositiveNumber(value, fallback = 0) {
   return num >= 0 ? num : fallback;
 }
 
+function isValidOrderPrice(value) {
+  const price = typeof value === 'string' && value.trim() !== '' ? Number(value) : value;
+  return Number.isFinite(price) && price >= 0;
+}
+
 function asNullableId(value) {
   const num = Number(value);
   return Number.isSafeInteger(num) && num > 0 ? num : null;
@@ -701,7 +706,7 @@ function validateBackupPayload(payload) {
     const status = asTrimmedString(order.status, 'new');
     if (!allowedOrderStatuses.has(status)) throw new Error(`حالة أوردر غير صالحة: ${status}`);
     if (asPositiveInteger(order.quantity, 0) <= 0) throw new Error(`عدد قطع غير صالح في الأوردر: ${asTrimmedString(order.code)}`);
-    if (asPositiveNumber(order.finalPrice, 0) <= 0) throw new Error(`سعر بيع غير صالح في الأوردر: ${asTrimmedString(order.code)}`);
+    if (!isValidOrderPrice(order.finalPrice)) throw new Error(`سعر بيع غير صالح في الأوردر: ${asTrimmedString(order.code)}`);
   });
 
   orderMaterials.forEach((item) => {
@@ -872,6 +877,7 @@ function registerIpcHandlers() {
   handleIpc(
     CHANNELS.createOrder,
     async (payload) => {
+      if (!isValidOrderPrice(payload?.finalPrice)) throw new Error('أدخل سعر بيع صالحًا');
       const data = normalizeOrderPayload(payload);
       validateCreateOrderPayload(data);
       createOrder(data);
@@ -884,13 +890,9 @@ function registerIpcHandlers() {
   handleIpc(
     CHANNELS.updateOrder,
     async (payload) => {
+      if (!isValidOrderPrice(payload?.finalPrice)) throw new Error('أدخل سعر بيع صالحًا');
       const data = normalizeOrderPayload(payload);
-      if (payload?.manualFinalPrice === true) {
-        if (!Number.isFinite(payload.finalPrice) || payload.finalPrice < 0) {
-          throw new Error('أدخل سعر بيع صالحًا');
-        }
-        data.manualFinalPrice = true;
-      }
+      data.manualFinalPrice = payload.manualFinalPrice === true;
       validateUpdateOrderPayload(data);
       updateOrder(data);
       scheduleAutomaticBackup('after-update');
