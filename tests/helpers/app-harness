@@ -8,7 +8,7 @@ const root = path.join(__dirname, '../..');
 const database = require('../../database');
 
 /** Real preload + real main handlers + real SQLite. Only Electron OS dialogs/lifecycle are mocked. */
-function createAppHarness(directory, { withSampleMaterials = true, workerClass = null, timeout = null } = {}) {
+function createAppHarness(directory, { withSampleMaterials = true, workerClass = null, timeout = null, trackingModule = null } = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const dbPath = path.join(directory, 'app.db');
   const documents = path.join(directory, 'Documents');
@@ -24,6 +24,16 @@ function createAppHarness(directory, { withSampleMaterials = true, workerClass =
   }
   const handlers = new Map();
   const harness = { database, dbPath, documents, errors: [], calls: [], dialogBehavior: null };
+  const appEvents = new Map();
+  let finishQuit;
+  const closed = new Promise((resolve) => { finishQuit = resolve; });
+  harness.quitCalls = 0;
+  harness.requestQuit = () => {
+    const event = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+    for (const callback of appEvents.get('before-quit') || []) callback(event);
+    return event.defaultPrevented;
+  };
+  harness.closeApp = () => { harness.requestQuit(); return closed; };
   const paths = { appData: path.join(directory, 'AppData'), documents };
   let launch;
   const sender = { mainFrame: { url: pathToFileURL(path.join(root, 'index.html')).href }, setWindowOpenHandler() {}, on() {} };
@@ -38,7 +48,14 @@ function createAppHarness(directory, { withSampleMaterials = true, workerClass =
   const electron = {
     app: { getPath: (name) => paths[name], setPath: (name, value) => { paths[name] = value; },
       disableHardwareAcceleration() {}, requestSingleInstanceLock: () => true,
-      whenReady: () => ({ then: (callback) => { launch = callback; } }), on() {}, quit() {} },
+      whenReady: () => ({ then: (callback) => { launch = callback; } }),
+      on(name, callback) {
+        if (!appEvents.has(name)) appEvents.set(name, []);
+        appEvents.get(name).push(callback);
+      },
+      quit() {
+        if (!harness.requestQuit()) { harness.quitCalls++; finishQuit(); }
+      } },
     BrowserWindow: TestWindow,
     shell: { openExternal: async () => {}, openPath: async () => '', showItemInFolder: (file) => { harness.revealedFile = file; } },
     clipboard: { writeText: (text) => { harness.clipboardText = text; } },
@@ -52,11 +69,12 @@ function createAppHarness(directory, { withSampleMaterials = true, workerClass =
   const moduleStub = { exports: {} };
   const context = vm.createContext({
     require: (name) => name === 'electron' ? electron
+      : name === './tracking-workbook' && trackingModule ? trackingModule
       : name === 'worker_threads' && workerClass ? { Worker: workerClass } : nodeRequire(name),
     module: moduleStub, exports: moduleStub.exports, __dirname: root, __filename: path.join(root, 'main.js'),
     process: { env: process.env, platform: process.platform, on() {} },
     console: { ...console, error: (...args) => harness.errors.push(args), warn: (...args) => harness.errors.push(args) },
-    Buffer, URL, setTimeout: timeout || (() => 0), clearTimeout, setInterval: () => 0
+    Buffer, URL, setTimeout: timeout || (() => 0), clearTimeout, setInterval: () => 0, clearInterval
   });
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   vm.runInContext(`${main}\nmodule.exports = { registerIpcHandlers, createMainWindow, validateBackupPayload, normalizeOrderPayload, normalizePurchasePayload };`, context, { filename: 'main.js' });
